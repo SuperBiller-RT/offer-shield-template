@@ -77,11 +77,14 @@ export default async function CandidateSharePage({
 
   const leftRole = splitRole(caseRow.new_role);
   const rightRole = splitRole(caseRow.current_role);
-  const leftHeader = leftRole.company || leftRole.title || "New Role";
-  const rightHeader = rightRole.company || rightRole.title || "Current Role";
+  const leftHeader = leftRole.company || leftRole.title || "New company";
+  const rightHeader = rightRole.company || rightRole.title || "Current company";
 
+  // Currency-only roll-up: skip the Pension row (index 4) so a "%" entry
+  // never bumps the total package. Mirrors ConsiderationPanel.
+  const FIN_CURRENCY_INDICES = [0, 1, 2, 3, 5, 6];
   let tl = 0, tr = 0;
-  for (let i = 0; i < 7; i++) {
+  for (const i of FIN_CURRENCY_INDICES) {
     const row = financial[String(i)];
     if (row) {
       tl += parseGbp(row.l ?? "");
@@ -94,7 +97,7 @@ export default async function CandidateSharePage({
     const v = comparison[String(i)];
     if (v === "left") leftScore++;
     else if (v === "right") rightScore++;
-    else if (v === "both") { leftScore += 0.5; rightScore += 0.5; }
+    else if (v === "both") { leftScore++; rightScore++; }
   }
 
   const senderLabel = sender.agency_name || sender.recruiter_name || "Your recruiter";
@@ -204,11 +207,11 @@ export default async function CandidateSharePage({
               })}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: "2px solid var(--border)" }}>
                 <div style={{ padding: "10px 14px", background: "var(--accent-light)" }}>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "var(--accent)" }}>{Math.floor(leftScore)}</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "var(--accent)" }}>{leftScore}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>factors favour new role</div>
                 </div>
                 <div style={{ padding: "10px 14px", background: "var(--surface-alt)" }}>
-                  <div style={{ fontSize: 20, fontWeight: 900 }}>{Math.floor(rightScore)}</div>
+                  <div style={{ fontSize: 20, fontWeight: 900 }}>{rightScore}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>factors favour current role</div>
                 </div>
               </div>
@@ -228,11 +231,18 @@ export default async function CandidateSharePage({
               {FINANCIAL_ROWS.slice(0, -1).map((label, i) => {
                 const row = financial[String(i)];
                 if (!row || (!row.l && !row.r)) return null;
+                const isPension = i === 4;
+                const fmt = (raw: string) => {
+                  if (!raw) return "—";
+                  const n = parseGbp(raw);
+                  if (n <= 0) return raw;
+                  return isPension ? `${n}%` : fmtGbp(n);
+                };
                 return (
                   <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)", fontSize: 12.5 }}>
                     <div style={{ padding: "9px 14px", color: "var(--text-secondary)" }}>{label}</div>
-                    <div style={{ padding: "9px 14px" }}>{row.l || "—"}</div>
-                    <div style={{ padding: "9px 14px" }}>{row.r || "—"}</div>
+                    <div style={{ padding: "9px 14px" }}>{fmt(row.l)}</div>
+                    <div style={{ padding: "9px 14px" }}>{fmt(row.r)}</div>
                   </div>
                 );
               })}

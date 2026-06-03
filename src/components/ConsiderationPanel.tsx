@@ -6,6 +6,10 @@ import SendLinkModal from "./SendLinkModal";
 import { VALUE_LABELS, COMPARISON_FACTORS, FINANCIAL_ROWS } from "./consideration-constants";
 const FIN_TOTAL_IDX = 7;
 const FIN_WFH_IDX = 6;
+const FIN_PENSION_IDX = 4;
+// Currency rows roll up into the Total pill; the % row (Pension) is shown but
+// not summed — typing "6%" mustn't bump the total by £6.
+const FIN_CURRENCY_INDICES = [0, 1, 2, 3, 5, 6];
 
 type Verdict = "left" | "right" | "both";
 
@@ -50,7 +54,7 @@ function fmtGbp(n: number): string {
 }
 function calcTotals(fin: Record<string, { l: string; r: string }>) {
   let tl = 0, tr = 0;
-  for (let i = 0; i < FIN_TOTAL_IDX; i++) {
+  for (const i of FIN_CURRENCY_INDICES) {
     const row = fin[String(i)];
     if (row) {
       tl += parseGbp(row.l ?? "");
@@ -75,6 +79,8 @@ export default function ConsiderationPanel() {
   const [newName, setNewName] = useState("");
   const [draft, setDraft] = useState<Consideration>(EMPTY_CONSIDERATION);
   const [recruiterNotes, setRecruiterNotes] = useState("");
+  const [newCompany, setNewCompany] = useState("");
+  const [currentCompany, setCurrentCompany] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [shareOpen, setShareOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -121,9 +127,13 @@ export default function ConsiderationPanel() {
       candidate_reasons: cons.candidate_reasons ?? "",
     });
     setRecruiterNotes(activeCase.notes ?? "");
+    setNewCompany(activeCase.new_role ?? "");
+    setCurrentCompany(activeCase.current_role ?? "");
     lastSavedRef.current = JSON.stringify({
       consideration: cons,
       notes: activeCase.notes ?? "",
+      new_role: activeCase.new_role ?? "",
+      current_role: activeCase.current_role ?? "",
     });
     setSaveStatus("idle");
   }, [activeCase]);
@@ -134,7 +144,12 @@ export default function ConsiderationPanel() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaveStatus("saving");
     saveTimerRef.current = setTimeout(async () => {
-      const payload = { consideration: draft, notes: recruiterNotes };
+      const payload = {
+        consideration: draft,
+        notes: recruiterNotes,
+        new_role: newCompany,
+        current_role: currentCompany,
+      };
       const serialized = JSON.stringify(payload);
       if (serialized === lastSavedRef.current) {
         setSaveStatus("saved");
@@ -159,7 +174,7 @@ export default function ConsiderationPanel() {
         setSaveStatus("error");
       }
     }, 700);
-  }, [activeId, draft, recruiterNotes]);
+  }, [activeId, draft, recruiterNotes, newCompany, currentCompany]);
 
   // Auto-save whenever editable state changes.
   useEffect(() => {
@@ -168,7 +183,7 @@ export default function ConsiderationPanel() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [draft, recruiterNotes, activeId, scheduleSave]);
+  }, [draft, recruiterNotes, newCompany, currentCompany, activeId, scheduleSave]);
 
   function toggleValue(i: number) {
     setDraft((d) => {
@@ -233,10 +248,12 @@ export default function ConsiderationPanel() {
     }
   }
 
-  const leftRole = useMemo(() => splitRole(activeCase?.new_role ?? null), [activeCase]);
-  const rightRole = useMemo(() => splitRole(activeCase?.current_role ?? null), [activeCase]);
-  const leftHeader = leftRole.company || leftRole.title || "New Role";
-  const rightHeader = rightRole.company || rightRole.title || "Current Role";
+  // Headers prefer the user-typed company values; fall back to a parsed "Title
+  // @ Company" string for cases that pre-date the editable inputs.
+  const leftSplit = useMemo(() => splitRole(newCompany || null), [newCompany]);
+  const rightSplit = useMemo(() => splitRole(currentCompany || null), [currentCompany]);
+  const leftHeader = leftSplit.company || leftSplit.title || "New company";
+  const rightHeader = rightSplit.company || rightSplit.title || "Current company";
 
   const { tl, tr } = calcTotals(draft.financial);
   let leftScore = 0, rightScore = 0;
@@ -244,7 +261,7 @@ export default function ConsiderationPanel() {
     const v = draft.comparison[String(i)];
     if (v === "left") leftScore++;
     else if (v === "right") rightScore++;
-    else if (v === "both") { leftScore += 0.5; rightScore += 0.5; }
+    else if (v === "both") { leftScore++; rightScore++; }
   }
 
   let insightTone: "good" | "warn" | null = null;
@@ -393,11 +410,39 @@ export default function ConsiderationPanel() {
                 />
               </div>
 
+              {/* Company labels for both comparison tables */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--text-muted)", marginBottom: 6 }}>
+                    New company
+                  </label>
+                  <input
+                    className="field-input"
+                    style={{ width: "100%" }}
+                    placeholder="e.g. Nexus Dynamics"
+                    value={newCompany}
+                    onChange={(e) => setNewCompany(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--text-muted)", marginBottom: 6 }}>
+                    Current company
+                  </label>
+                  <input
+                    className="field-input"
+                    style={{ width: "100%" }}
+                    placeholder="e.g. Apex Tech"
+                    value={currentCompany}
+                    onChange={(e) => setCurrentCompany(e.target.value)}
+                  />
+                </div>
+              </div>
+
               {/* Role comparison */}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Role Comparison</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  Click each row to indicate which role is stronger for that factor.
+                  Click each row to indicate which company is stronger for that factor.
                 </div>
                 <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 1fr" }}>
@@ -435,12 +480,12 @@ export default function ConsiderationPanel() {
                   })}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 52px 1fr", borderTop: "2px solid var(--border)" }}>
                     <div style={{ background: "var(--accent-light)", padding: "10px 14px" }}>
-                      <div style={{ fontSize: 22, fontWeight: 900, color: "var(--accent)" }}>{Math.floor(leftScore)}</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color: "var(--accent)" }}>{leftScore}</div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>factors favour new role</div>
                     </div>
                     <div />
                     <div style={{ background: "var(--surface-alt)", padding: "10px 14px" }}>
-                      <div style={{ fontSize: 22, fontWeight: 900 }}>{Math.floor(rightScore)}</div>
+                      <div style={{ fontSize: 22, fontWeight: 900 }}>{rightScore}</div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>factors favour current role</div>
                     </div>
                   </div>
@@ -499,6 +544,7 @@ export default function ConsiderationPanel() {
                       );
                     }
                     const row = draft.financial[String(i)] ?? { l: "", r: "" };
+                    const isPension = i === FIN_PENSION_IDX;
                     return (
                       <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)" }}>
                         <div style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 500, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
@@ -510,19 +556,19 @@ export default function ConsiderationPanel() {
                           )}
                         </div>
                         <div style={{ padding: "6px 10px" }}>
-                          <input
-                            className="fin-input"
-                            placeholder="—"
+                          <FinAdornedInput
+                            unit={isPension ? "%" : "£"}
+                            placement={isPension ? "suffix" : "prefix"}
                             value={row.l}
-                            onChange={(e) => updateFin(i, "l", e.target.value)}
+                            onChange={(v) => updateFin(i, "l", v)}
                           />
                         </div>
                         <div style={{ padding: "6px 10px" }}>
-                          <input
-                            className="fin-input"
-                            placeholder="—"
+                          <FinAdornedInput
+                            unit={isPension ? "%" : "£"}
+                            placement={isPension ? "suffix" : "prefix"}
                             value={row.r}
-                            onChange={(e) => updateFin(i, "r", e.target.value)}
+                            onChange={(v) => updateFin(i, "r", v)}
                           />
                         </div>
                       </div>
@@ -647,5 +693,68 @@ function NewCaseInline({ onCreated }: { onCreated: (c: CaseRow) => void }) {
         Cancel
       </button>
     </form>
+  );
+}
+
+function FinAdornedInput({
+  unit,
+  placement,
+  value,
+  onChange,
+}: {
+  unit: string;
+  placement: "prefix" | "suffix";
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  // Show the raw value the user typed; the adornment is purely visual. The
+  // parser strips non-numerics regardless, so "£95,000" and "95000" both work,
+  // and "6%" in the pension row never bumps the total (Pension is excluded
+  // from the currency-only sum).
+  return (
+    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+      {placement === "prefix" && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 9,
+            top: "50%",
+            transform: "translateY(-50%)",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            pointerEvents: "none",
+          }}
+        >
+          {unit}
+        </span>
+      )}
+      <input
+        className="fin-input"
+        placeholder="—"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          paddingLeft: placement === "prefix" ? 20 : undefined,
+          paddingRight: placement === "suffix" ? 20 : undefined,
+        }}
+      />
+      {placement === "suffix" && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            right: 9,
+            top: "50%",
+            transform: "translateY(-50%)",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            pointerEvents: "none",
+          }}
+        >
+          {unit}
+        </span>
+      )}
+    </div>
   );
 }
