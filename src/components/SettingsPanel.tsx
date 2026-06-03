@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MODEL_OPTIONS, DEFAULT_MODEL, formatModelOption } from "@/lib/openrouter-models";
 
 interface Me {
   ok: boolean;
@@ -10,10 +11,10 @@ interface Me {
     display_name: string | null;
     is_admin: boolean;
     account_type: string | null;
-  };
-  effectivePermissions?: {
-    canInsertKeys: boolean;
-    canSeeBalance: boolean;
+    effective_permissions?: {
+      canInsertKeys: boolean;
+      canSeeBalance: boolean;
+    };
   };
 }
 
@@ -99,8 +100,41 @@ export default function SettingsPanel() {
   const [brandMsg, setBrandMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const bannerFileRef = useRef<HTMLInputElement | null>(null);
 
-  const canManageKeys = !!me?.effectivePermissions?.canInsertKeys;
-  const canSeeBalance = !!me?.effectivePermissions?.canSeeBalance;
+  const canManageKeys = !!me?.user?.effective_permissions?.canInsertKeys;
+  const canSeeBalance = !!me?.user?.effective_permissions?.canSeeBalance;
+
+  // Debounced autosave for the model picker. Key save stays explicit (Save
+  // button) because the input is masked + user-typed; model is a single-click
+  // dropdown so autosave matches rspy's UX.
+  const modelSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [modelSaveStatus, setModelSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  const saveModel = useCallback(async (next: string) => {
+    setModelSaveStatus("saving");
+    try {
+      const r = await fetch("/api/auth/ai-settings", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: next }),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d?.ok) {
+        setModelSaveStatus("saved");
+        setTimeout(() => setModelSaveStatus("idle"), 1500);
+      } else {
+        setModelSaveStatus("error");
+      }
+    } catch {
+      setModelSaveStatus("error");
+    }
+  }, []);
+
+  function onModelChange(next: string) {
+    setAi((a) => ({ ...a, model: next }));
+    if (modelSaveTimerRef.current) clearTimeout(modelSaveTimerRef.current);
+    modelSaveTimerRef.current = setTimeout(() => { void saveModel(next); }, 350);
+  }
 
   // Load me + ai-settings + branding on mount.
   useEffect(() => {
@@ -337,6 +371,32 @@ export default function SettingsPanel() {
                   {aiMsg.text}
                 </div>
               )}
+
+              <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border-light)" }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--text-muted)", marginBottom: 6 }}>
+                  Model
+                </label>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <select
+                    className="field-input"
+                    style={{ flex: 1, minWidth: 280, padding: "8px 10px" }}
+                    value={ai.model || DEFAULT_MODEL}
+                    onChange={(e) => onModelChange(e.target.value)}
+                  >
+                    {MODEL_OPTIONS.map((m) => (
+                      <option key={m.id} value={m.id}>{formatModelOption(m)}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 11, color: modelSaveStatus === "error" ? "var(--red)" : "var(--text-muted)", minWidth: 60 }}>
+                    {modelSaveStatus === "saving" ? "Saving…" :
+                      modelSaveStatus === "saved" ? "Saved" :
+                        modelSaveStatus === "error" ? "Save failed" : ""}
+                  </span>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                  Picked for any AI features added later — no LLM calls in this round.
+                </div>
+              </div>
             </>
           )}
 
