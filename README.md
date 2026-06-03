@@ -1,32 +1,34 @@
 # offer-shield-template
 
-Static single-file landing/demo template for SuperBiller's OfferShield. Generates a per-client deployment by substituting placeholder tokens before deploy. Vercel-deployable as-is — no `vercel.json`, no build step.
+OfferShield — a recruiter-facing tool that captures **Consideration for Change** signals on individual candidates and sends shareable summaries to candidates and hiring managers.
 
-Source canonical lives at <https://superbiller.com/offer-shield>; this repo is the clonable template.
+Part of the SuperBiller CDP suite — shares the `cdp_*` user/auth/usage tables with `recruiter-spy-template`, `vacancy-iq-template`, `vacancyidentifier-template`, and the admin control plane.
 
-## Placeholder tokens
+## Stack
 
-Replace these tokens in `index.html` per deployment (plain find/replace — no escaping needed):
+- Next.js 16 (App Router)
+- Neon serverless Postgres — two bindings: shared `user_db_DATABASE_URL` + app-local `DATABASE_URL`
+- bcryptjs for password hashing
+- Tailwind v4
 
-| Token | Meaning | Example |
-|---|---|---|
-| `__AGENCY_NAME__` | Agency / firm display name | `Connell Search` |
-| `__DEFAULT_RECRUITER__` | Default recruiter name shown in agency defaults + share dialog | `Sarah Connell` |
-| `__AGENCY_DOMAIN__` | Agency email domain (used in the recruiter-email placeholder) | `connellsearch.com` |
+## Local setup
 
-The `e.g. James Hartley` / `e.g. Sarah Connell` strings in input `placeholder=` attributes are illustrative copy and intentionally left untouched — they only render when the field is empty.
+```bash
+npm install
+cp .env.example .env.local
+# fill in user_db_DATABASE_URL + DATABASE_URL (both can point at the same Neon for dev)
+npm run dev
+```
 
-## Demo data
+## Architecture
 
-The `cases[]` array in `index.html` (search for `/* ══ DEMO DATA`) holds 7 illustrative candidates (James Hartley, Priya Mehta, David Okafor, Sophie Renault, Marcus Webb, Aisha Patel, Ryan Calloway) with stages, risks, recruiter names, and notes. Replace the entire array with real candidate data per deployment — the rest of the page renders straight off this list.
+See `CLAUDE.md` for the full handover — topology, route map, auth flow, share-link contract, and the "don't break" list.
 
 ## Deploy
 
-```bash
-git clone https://github.com/SuperBiller-RT/offer-shield-template.git
-cd offer-shield-template
-# (apply placeholder substitutions + swap cases[] here)
-vercel --prod
-```
+Auto-deploys to Vercel on every push to `main`. The Vercel project needs both Neon bindings attached before first deploy:
 
-Vercel auto-detects a static project; no framework preset needed.
+- `user_db_DATABASE_URL` — shared CDP Neon (same DB as the other product apps)
+- `DATABASE_URL` — fresh app-local Neon for `os_cases` + `os_share_links`
+
+Live at https://offer-shield-template.vercel.app.
