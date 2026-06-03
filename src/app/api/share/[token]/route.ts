@@ -19,6 +19,7 @@ interface ShareRow {
   case_contract_status: string | null;
   case_notes: string | null;
   case_signals: unknown;
+  case_consideration: unknown;
 }
 
 // Public, unauthenticated. Resolves an `os_share_links.token` to the case
@@ -39,7 +40,8 @@ export async function GET(
            c.name AS case_name, c.stage AS case_stage, c.risk AS case_risk,
            c.recruiter AS case_recruiter, c.current_role AS case_current_role,
            c.new_role AS case_new_role, c.contract_status AS case_contract_status,
-           c.notes AS case_notes, c.signals AS case_signals
+           c.notes AS case_notes, c.signals AS case_signals,
+           c.consideration AS case_consideration
     FROM os_share_links s
     JOIN os_cases c ON c.id = s.case_id AND c.user_id = s.user_id
     WHERE s.token = ${token}
@@ -89,6 +91,7 @@ export async function GET(
       contract_status: row.case_contract_status,
       notes: row.case_notes,
       signals: row.case_signals,
+      consideration: row.case_consideration,
     },
     sender,
   });
