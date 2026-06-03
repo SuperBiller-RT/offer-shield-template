@@ -146,7 +146,7 @@ async function runMigrations(): Promise<void> {
         stage TEXT,
         risk TEXT,
         recruiter TEXT,
-        current_role TEXT,
+        current_title TEXT,
         new_role TEXT,
         contract_status TEXT,
         banner TEXT,

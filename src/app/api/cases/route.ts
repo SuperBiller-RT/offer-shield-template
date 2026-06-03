@@ -61,8 +61,12 @@ export async function GET() {
   const c = await checkAuth();
   if (!c.ok) return authErrorResponse(c.code);
   await migrate();
+  // `current_title` is the actual DB column; we alias it back to `current_role`
+  // for the client so UIUX's TS shape doesn't have to change. The rename
+  // happened because `current_role` is a reserved PostgreSQL keyword.
   const rows = (await appSql`
-    SELECT id, user_id, name, stage, risk, recruiter, current_role, new_role,
+    SELECT id, user_id, name, stage, risk, recruiter,
+           current_title AS current_role, new_role,
            contract_status, banner, notes, signals, consideration,
            created_at, updated_at
     FROM os_cases
@@ -94,7 +98,7 @@ export async function POST(req: Request) {
   const considerationJson = consideration === undefined || consideration === null ? "{}" : consideration;
   const rows = (await appSql`
     INSERT INTO os_cases (
-      user_id, name, stage, risk, recruiter, current_role, new_role,
+      user_id, name, stage, risk, recruiter, current_title, new_role,
       contract_status, banner, notes, signals, consideration
     ) VALUES (
       ${c.user.id},
@@ -110,7 +114,8 @@ export async function POST(req: Request) {
       ${signals}::jsonb,
       ${considerationJson}::jsonb
     )
-    RETURNING id, user_id, name, stage, risk, recruiter, current_role, new_role,
+    RETURNING id, user_id, name, stage, risk, recruiter,
+              current_title AS current_role, new_role,
               contract_status, banner, notes, signals, consideration,
               created_at, updated_at
   `) as CaseRow[];

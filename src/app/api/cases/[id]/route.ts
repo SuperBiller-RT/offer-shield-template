@@ -66,7 +66,8 @@ export async function GET(
   if (!c.ok) return authErrorResponse(c.code);
   await migrate();
   const rows = (await appSql`
-    SELECT id, user_id, name, stage, risk, recruiter, current_role, new_role,
+    SELECT id, user_id, name, stage, risk, recruiter,
+           current_title AS current_role, new_role,
            contract_status, banner, notes, signals, consideration,
            created_at, updated_at
     FROM os_cases
@@ -121,7 +122,7 @@ export async function PATCH(
       stage           = COALESCE(${stage           ?? null}, stage),
       risk            = COALESCE(${risk            ?? null}, risk),
       recruiter       = COALESCE(${recruiter       ?? null}, recruiter),
-      current_role    = COALESCE(${currentRole     ?? null}, current_role),
+      current_title   = COALESCE(${currentRole     ?? null}, current_title),
       new_role        = COALESCE(${newRole         ?? null}, new_role),
       contract_status = COALESCE(${contractStatus  ?? null}, contract_status),
       banner          = COALESCE(${banner          ?? null}, banner),
@@ -130,7 +131,8 @@ export async function PATCH(
       consideration   = COALESCE(${considerationJson}::jsonb, consideration),
       updated_at      = NOW()
     WHERE id = ${id} AND user_id = ${c.user.id}
-    RETURNING id, user_id, name, stage, risk, recruiter, current_role, new_role,
+    RETURNING id, user_id, name, stage, risk, recruiter,
+              current_title AS current_role, new_role,
               contract_status, banner, notes, signals, consideration,
               created_at, updated_at
   `) as CaseRow[];

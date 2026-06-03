@@ -38,7 +38,7 @@ export async function GET(
   const rows = (await appSql`
     SELECT s.case_id, s.user_id, s.expires_at, s.revoked_at,
            c.name AS case_name, c.stage AS case_stage, c.risk AS case_risk,
-           c.recruiter AS case_recruiter, c.current_role AS case_current_role,
+           c.recruiter AS case_recruiter, c.current_title AS case_current_role,
            c.new_role AS case_new_role, c.contract_status AS case_contract_status,
            c.notes AS case_notes, c.signals AS case_signals,
            c.consideration AS case_consideration
