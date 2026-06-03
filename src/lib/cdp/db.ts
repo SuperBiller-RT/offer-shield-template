@@ -18,16 +18,25 @@ let _appSql:  NeonQueryFunction<false, false> | null = null;
 
 function getUserSql(): NeonQueryFunction<false, false> {
   if (_userSql) return _userSql;
+  // Prefer the suite-canonical name `user_db_DATABASE_URL`. On this Vercel
+  // project the shared user_db Neon was attached without a prefix (it was
+  // the first attach), so it lands on plain `DATABASE_URL` — accept that
+  // as the fall-through so we don't force a rename.
   const url = process.env.user_db_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) throw new Error("user_db_DATABASE_URL is not configured");
+  if (!url) throw new Error("user_db_DATABASE_URL (or DATABASE_URL) is not configured");
   _userSql = neon(url);
   return _userSql;
 }
 
 function getAppSql(): NeonQueryFunction<false, false> {
   if (_appSql) return _appSql;
-  const url = process.env.DATABASE_URL ?? process.env.user_db_DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not configured");
+  // App-local Neon. On Vercel this is the `offer_shield_db` integration —
+  // its env vars carry an `offer_shield_db_` prefix because it was the
+  // second Neon attached. For local dev with a single Neon, leaving only
+  // `DATABASE_URL` set is fine — both clients then resolve to the same row
+  // store, which the topology rule allows as a transitional state.
+  const url = process.env.offer_shield_db_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error("offer_shield_db_DATABASE_URL (or DATABASE_URL) is not configured");
   _appSql = neon(url);
   return _appSql;
 }
