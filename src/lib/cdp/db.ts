@@ -179,6 +179,18 @@ export function migrate(): Promise<void> {
   if (!migratePromise) {
     migratePromise = runMigrations().catch((e) => {
       migratePromise = null;
+      // Surface full driver detail to runtime logs — Vercel truncates to ~30
+      // chars in the activity feed and `error.message` alone hides the
+      // failing SQL / position. Stay verbose until we have a clean cold-start.
+      const err = e as { message?: string; code?: string; severity?: string; position?: string; query?: string; routine?: string };
+      console.error("[migrate] failed:", {
+        message: err?.message,
+        code: err?.code,
+        severity: err?.severity,
+        position: err?.position,
+        routine: err?.routine,
+        query: err?.query,
+      });
       throw e;
     });
   }
