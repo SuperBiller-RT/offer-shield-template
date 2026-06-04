@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildConsiderationPdf, exportConsiderationPdf } from "@/lib/export-consideration";
 
 type Verdict = "left" | "right" | "both";
@@ -55,14 +55,21 @@ export default function ExportModal({
   const [candidateName, setCandidateName] = useState(caseRow.name ?? "");
   const [recruiterName, setRecruiterName] = useState("");
   const [branding, setBranding] = useState<Branding>({});
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Double-buffered iframe sources: when a new PDF is ready we write it into
+  // the inactive slot and only flip `activeSlot` once that iframe fires
+  // `onLoad`. The previously-visible iframe stays mounted with its content
+  // until the swap, so there's no blank flash between rebuilds.
+  const [slots, setSlots] = useState<[string | null, string | null]>([null, null]);
+  const [activeSlot, setActiveSlotState] = useState<0 | 1>(0);
+  const activeSlotRef = useRef<0 | 1>(0);
+  const setActiveSlot = (n: 0 | 1) => { activeSlotRef.current = n; setActiveSlotState(n); };
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewBuilding, setPreviewBuilding] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
 
   // Refs for cleanup + cancellation.
-  const previewUrlRef = useRef<string | null>(null);
+  const slotsRef = useRef<[string | null, string | null]>([null, null]);
   const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rebuildSeqRef = useRef(0);
   const noPreviewInline = useRef<boolean>(false);
@@ -100,11 +107,25 @@ export default function ExportModal({
     return () => { cancelled = true; };
   }, []);
 
-  // Debounced PDF rebuild whenever any input changes.
+  // Stable rebuild trigger: serialise the dynamic inputs so re-renders with
+  // identical content (e.g. autosave round-trip returning a new `consideration`
+  // reference with the same shape) don't retrigger the rebuild.
+  const rebuildKey = useMemo(() => JSON.stringify({
+    candidateName,
+    recruiterName,
+    newCompany,
+    currentCompany,
+    recruiterNotes,
+    consideration,
+    branding,
+    fallbackName: caseRow.name,
+  }), [candidateName, recruiterName, newCompany, currentCompany, recruiterNotes, consideration, branding, caseRow.name]);
+
+  // Debounced PDF rebuild. Writes into the *inactive* iframe slot — the
+  // currently-visible iframe keeps showing its old content until the new
+  // iframe finishes loading and onLoad flips `activeSlot`.
   useEffect(() => {
     if (noPreviewInline.current) {
-      // Skip preview generation entirely on iOS WebKit — preview is the
-      // download itself there.
       setPreviewBuilding(false);
       return;
     }
@@ -123,34 +144,58 @@ export default function ExportModal({
           recruiterNotes,
           branding,
         });
-        // Stale-build guard: bail if a newer rebuild has been queued/run.
         if (mySeq !== rebuildSeqRef.current) return;
         const url = URL.createObjectURL(blob);
-        // Revoke the previous preview URL.
-        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-        previewUrlRef.current = url;
-        setPreviewUrl(url);
-        setPreviewBuilding(false);
+        // Write into the inactive slot, revoking whatever was there. Read
+        // active slot via ref so this effect doesn't depend on activeSlot
+        // state (which would loop: swap → re-run effect → rebuild → swap …).
+        const target = activeSlotRef.current === 0 ? 1 : 0;
+        setSlots((prev) => {
+          const next = [...prev] as [string | null, string | null];
+          if (next[target]) URL.revokeObjectURL(next[target]!);
+          next[target] = url;
+          slotsRef.current = next;
+          return next;
+        });
+        // `activeSlot` flips when the target iframe's onLoad fires.
       } catch (e) {
         if (mySeq !== rebuildSeqRef.current) return;
         setPreviewError(e instanceof Error ? e.message : "Preview unavailable.");
         setPreviewBuilding(false);
       }
-    }, 300);
+    }, 800);
     return () => {
       if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
     };
-  }, [
-    candidateName, recruiterName, branding,
-    newCompany, currentCompany,
-    consideration, recruiterNotes, caseRow.name,
-  ]);
+    // Only rebuildKey drives rebuilds — activeSlot is read via ref so the
+    // swap doesn't re-fire this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildKey]);
 
-  // Unmount cleanup — revoke whatever blob URL is still alive.
+  // Promote the just-loaded slot. The iframe fires onLoad once when its src
+  // first attaches (including the initial `about:blank`) and again every time
+  // src changes — we only swap when the loaded slot is the inactive one and
+  // it has a real URL.
+  function onSlotLoaded(idx: 0 | 1) {
+    const slot = slotsRef.current[idx];
+    if (!slot) return;
+    if (idx === activeSlotRef.current) {
+      // Reload of the already-visible slot (rare — e.g. an iframe re-fires
+      // onLoad after a re-render). Nothing to swap.
+      setPreviewBuilding(false);
+      return;
+    }
+    setActiveSlot(idx);
+    setPreviewBuilding(false);
+  }
+
+  // Unmount cleanup — revoke whatever blob URLs are still alive.
   useEffect(() => {
     return () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      previewUrlRef.current = null;
+      for (const u of slotsRef.current) {
+        if (u) URL.revokeObjectURL(u);
+      }
+      slotsRef.current = [null, null];
     };
   }, []);
 
@@ -253,18 +298,36 @@ export default function ExportModal({
               Preview unavailable on this browser. Use <strong>Download PDF</strong> below to grab the file.
             </div>
           ) : (
-            <iframe
-              src={previewUrl ?? "about:blank"}
-              title="Consideration preview"
+            <div
               style={{
+                position: "relative",
                 width: "100%",
                 height: "clamp(320px, 60vh, 600px)",
                 border: "1px solid var(--border)",
                 borderRadius: "var(--radius)",
                 background: "var(--surface-alt)",
-                display: "block",
+                overflow: "hidden",
               }}
-            />
+            >
+              {([0, 1] as const).map((i) => (
+                <iframe
+                  key={i}
+                  src={slots[i] ?? "about:blank"}
+                  title={`Consideration preview ${i === 0 ? "A" : "B"}`}
+                  onLoad={() => onSlotLoaded(i)}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    background: "var(--surface-alt)",
+                    opacity: i === activeSlot ? 1 : 0,
+                    pointerEvents: i === activeSlot ? "auto" : "none",
+                  }}
+                />
+              ))}
+            </div>
           )}
 
           {downloadErr && (
