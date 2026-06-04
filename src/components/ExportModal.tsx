@@ -22,6 +22,10 @@ interface CaseRow {
 interface Branding {
   banner?: string;
   bannerHeight?: number;
+  bannerScale?: number | null;
+  bannerOffsetX?: number | null;
+  bannerOffsetY?: number | null;
+  bannerFrameWidth?: number | null;
   companyName?: string;
   footer?: string;
 }

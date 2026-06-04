@@ -26,6 +26,10 @@ export interface Consideration {
 export interface BrandingForExport {
   banner?: string;
   bannerHeight?: number;
+  bannerScale?: number | null;
+  bannerOffsetX?: number | null;
+  bannerOffsetY?: number | null;
+  bannerFrameWidth?: number | null;
   companyName?: string;
   footer?: string;
 }
@@ -76,19 +80,73 @@ function safeFilename(name: string): string {
   return (cleaned || "candidate") + "-consideration.pdf";
 }
 
-// Probe an image data URL for its native dimensions so we can size the banner
-// strip without distorting the aspect ratio.
-function imageDimensions(dataUrl: string): Promise<{ w: number; h: number }> {
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     if (typeof Image === "undefined") {
       reject(new Error("Image not available"));
       return;
     }
     const img = new Image();
-    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = dataUrl;
   });
+}
+
+// Render the saved banner through the recruiter's crop transform into an
+// offscreen canvas so the PDF embed matches what they configured in
+// Settings → Branding. The canvas mirrors the same CSS positioning the
+// in-app preview uses: image is anchored at the frame's centre with
+// `bannerScale` zoom and `bannerOffset{X,Y}` translation, clipped to the
+// frame's pixel dimensions.
+//
+// Returns the cropped data URL plus the final mm dimensions to use on the
+// A4 page (preserves frame aspect ratio; caps height at 50 mm so a tall
+// hero crop doesn't dominate the cover).
+async function renderCroppedBanner(b: BrandingForExport): Promise<
+  { dataUrl: string; widthMm: number; heightMm: number } | null
+> {
+  if (!b.banner) return null;
+  if (typeof document === "undefined") return null;
+  const img = await loadImage(b.banner);
+  const frameH = b.bannerHeight ?? 96;
+  const frameW = b.bannerFrameWidth ?? Math.min(1000, img.naturalWidth);
+  const scale = b.bannerScale ?? 1;
+  const offX = b.bannerOffsetX ?? 0;
+  const offY = b.bannerOffsetY ?? 0;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(frameW));
+  canvas.height = Math.max(1, Math.round(frameH));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  // White backing so transparent PNGs don't blend into whatever the PDF
+  // renderer paints behind the image.
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const sw = img.naturalWidth * scale;
+  const sh = img.naturalHeight * scale;
+  ctx.drawImage(
+    img,
+    canvas.width / 2 + offX - sw / 2,
+    canvas.height / 2 + offY - sh / 2,
+    sw,
+    sh,
+  );
+
+  const aspect = canvas.height / canvas.width;
+  let widthMm = CONTENT_W;
+  let heightMm = widthMm * aspect;
+  if (heightMm > 50) {
+    heightMm = 50;
+    widthMm = heightMm / aspect;
+  }
+  return {
+    dataUrl: canvas.toDataURL("image/jpeg", 0.92),
+    widthMm,
+    heightMm,
+  };
 }
 
 // Page-break helper. Call before drawing a block of known height; returns the
@@ -440,15 +498,18 @@ async function buildPdfDoc(args: ExportArgs): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const cursor = new Cursor(doc, MARGIN);
 
-  // ── Banner (optional) ──
+  // ── Banner (optional) — applies the recruiter's crop + scale + offset ──
   if (branding.banner) {
     try {
-      const { w: nw, h: nh } = await imageDimensions(branding.banner);
-      const aspect = nh / nw;
-      const targetW = CONTENT_W;
-      const targetH = Math.min(40, targetW * aspect);
-      doc.addImage(branding.banner, "JPEG", MARGIN, cursor.y, targetW, targetH, undefined, "FAST");
-      cursor.advance(targetH + 6);
+      const rendered = await renderCroppedBanner(branding);
+      if (rendered) {
+        // Centre when the capped width is narrower than the page content area
+        // (happens when the crop is taller than wide and the height cap forces
+        // a smaller width to preserve aspect).
+        const x = MARGIN + (CONTENT_W - rendered.widthMm) / 2;
+        doc.addImage(rendered.dataUrl, "JPEG", x, cursor.y, rendered.widthMm, rendered.heightMm, undefined, "FAST");
+        cursor.advance(rendered.heightMm + 6);
+      }
     } catch {
       // ignore — proceed without the banner if it can't be decoded
     }
