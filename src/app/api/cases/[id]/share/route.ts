@@ -8,7 +8,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function shareUrl(req: Request, token: string): string {
   const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("host") || "offer-shield-template.vercel.app";
+  const host = req.headers.get("host") || "considerationforchange.com";
   return `${proto}://${host}/c/${token}`;
 }
 

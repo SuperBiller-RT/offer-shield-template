@@ -22,7 +22,7 @@ This repo is one of several product apps that share the same Neon `user_db` and 
 
 | Surface | Where |
 |---|---|
-| **Live app** | https://offer-shield-template.vercel.app |
+| **Live app** | https://considerationforchange.com (legacy alias `offer-shield-template.vercel.app` 308s here) |
 | **GitHub repo** | https://github.com/SuperBiller-RT/offer-shield-template (public) |
 | **Vercel project** | `offer-shield-template` · team `superbiller-rts-projects` · auto-deploys from `main` |
 | **Tool slug** (pinned) | `offer_shield` |

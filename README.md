@@ -31,4 +31,4 @@ Auto-deploys to Vercel on every push to `main`. The Vercel project needs both Ne
 - `user_db_DATABASE_URL` — shared CDP Neon (same DB as the other product apps)
 - `DATABASE_URL` — fresh app-local Neon for `os_cases` + `os_share_links`
 
-Live at https://offer-shield-template.vercel.app.
+Live at https://considerationforchange.com (the `offer-shield-template.vercel.app` alias 308-redirects there).

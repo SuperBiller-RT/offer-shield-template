@@ -22,7 +22,7 @@ export async function GET() {
     const r = await fetch("https://openrouter.ai/api/v1/credits", {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://offer-shield-template.vercel.app",
+        "HTTP-Referer": "https://considerationforchange.com",
         "X-Title": "OfferShield",
       },
     });
