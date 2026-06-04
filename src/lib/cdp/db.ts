@@ -138,6 +138,14 @@ async function runMigrations(): Promise<void> {
   // candidate forms) and os_share_links (token-addressable read-only
   // view of a case for the "Send link to candidate" flow).
   await a.transaction([
+    // Transitional cleanup — the Website Scraper feature was misrouted to
+    // this app and reverted (Max 2026-06-04). Drop its tables on the next
+    // cold start; both statements are idempotent so leaving them in
+    // place is harmless on subsequent runs. Safe to delete after a couple
+    // of deploy cycles, once we're sure no environment is still seeded
+    // with the old schema.
+    a`DROP TABLE IF EXISTS os_scrape_runs`,
+    a`DROP TABLE IF EXISTS os_jobs`,
     a`
       CREATE TABLE IF NOT EXISTS os_cases (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -172,46 +180,6 @@ async function runMigrations(): Promise<void> {
       )
     `,
     a`CREATE INDEX IF NOT EXISTS os_share_links_case_idx ON os_share_links(case_id)`,
-    // Website-scraper output. One row per (user, source, external_id) — upsert
-    // semantics let us track first_seen / last_seen across repeated scrapes.
-    a`
-      CREATE TABLE IF NOT EXISTS os_jobs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id TEXT NOT NULL,
-        source TEXT NOT NULL,
-        external_id TEXT NOT NULL,
-        title TEXT,
-        location TEXT,
-        employer TEXT,
-        apply_url TEXT,
-        description TEXT,
-        posted_at TIMESTAMPTZ,
-        scraped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        dismissed_at TIMESTAMPTZ,
-        source_payload JSONB DEFAULT '{}'::jsonb,
-        UNIQUE (user_id, source, external_id)
-      )
-    `,
-    a`CREATE INDEX IF NOT EXISTS os_jobs_user_source_idx ON os_jobs(user_id, source, last_seen_at DESC)`,
-    // Per-source run history. "Run all" produces one row per source.
-    a`
-      CREATE TABLE IF NOT EXISTS os_scrape_runs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id TEXT NOT NULL,
-        source TEXT NOT NULL,
-        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        finished_at TIMESTAMPTZ,
-        status TEXT NOT NULL DEFAULT 'running',
-        error_message TEXT,
-        count_found INTEGER,
-        count_new INTEGER,
-        count_updated INTEGER,
-        duration_ms INTEGER
-      )
-    `,
-    a`CREATE INDEX IF NOT EXISTS os_scrape_runs_user_source_idx ON os_scrape_runs(user_id, source, started_at DESC)`,
   ]);
 }
 

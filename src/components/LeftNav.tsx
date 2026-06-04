@@ -15,17 +15,6 @@ const ITEMS: { href: string; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
-    href: "/scraper",
-    label: "Website Scraper",
-    icon: (
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M3 12h18" />
-        <path d="M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18" />
-      </svg>
-    ),
-  },
-  {
     href: "/settings",
     label: "Settings",
     icon: (
