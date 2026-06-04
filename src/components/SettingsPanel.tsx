@@ -99,6 +99,11 @@ export default function SettingsPanel() {
   const [brandBusy, setBrandBusy] = useState(false);
   const [brandMsg, setBrandMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const bannerFileRef = useRef<HTMLInputElement | null>(null);
+  // Lifted from BannerCropEditor so saveBranding() can measure the editor's
+  // actual rendered width and persist it as `bannerFrameWidth`. Without this
+  // the PDF export uses a different frame width than the crop UI did, and
+  // the banner renders at the wrong scale.
+  const bannerFrameRef = useRef<HTMLDivElement | null>(null);
 
   const canManageKeys = !!me?.user?.effective_permissions?.canInsertKeys;
   const canSeeBalance = !!me?.user?.effective_permissions?.canSeeBalance;
@@ -280,6 +285,14 @@ export default function SettingsPanel() {
   async function saveBranding() {
     setBrandBusy(true);
     setBrandMsg(null);
+    // Snapshot the editor's current rendered frame width so the PDF export
+    // can crop against the same bounds the recruiter saw. Falls back to the
+    // previously-saved value (or null) if the editor isn't mounted (e.g. no
+    // banner uploaded yet).
+    const measuredWidth = bannerFrameRef.current?.clientWidth ?? null;
+    const frameWidthToSave = measuredWidth && measuredWidth > 0
+      ? Math.round(measuredWidth)
+      : brand.bannerFrameWidth;
     try {
       const r = await fetch("/api/auth/branding", {
         method: "POST",
@@ -291,13 +304,17 @@ export default function SettingsPanel() {
           bannerScale: brand.bannerScale,
           bannerOffsetX: brand.bannerOffsetX,
           bannerOffsetY: brand.bannerOffsetY,
-          bannerFrameWidth: brand.bannerFrameWidth,
+          bannerFrameWidth: frameWidthToSave,
           companyName: brand.companyName,
           footer: brand.footer,
         }),
       });
       const d = await r.json().catch(() => null);
       if (r.ok && d?.ok) {
+        // Mirror the persisted frame width into local state so subsequent
+        // edits keep using it (and the BrandingPreview below renders with
+        // the same bounds).
+        setBrand((b) => ({ ...b, bannerFrameWidth: frameWidthToSave }));
         setBrandMsg({ kind: "ok", text: "Branding saved." });
       } else {
         setBrandMsg({ kind: "err", text: d?.error ?? "Could not save branding." });
@@ -437,6 +454,7 @@ export default function SettingsPanel() {
               offsetX={brand.bannerOffsetX ?? 0}
               offsetY={brand.bannerOffsetY ?? 0}
               frameWidth={brand.bannerFrameWidth}
+              frameRef={bannerFrameRef}
               onChange={(patch) => setBrand((b) => ({ ...b, ...patch }))}
               onReplace={() => bannerFileRef.current?.click()}
               onRemove={removeBanner}
@@ -621,6 +639,7 @@ function BannerCropEditor({
   offsetX,
   offsetY,
   frameWidth,
+  frameRef,
   onChange,
   onReplace,
   onRemove,
@@ -631,11 +650,13 @@ function BannerCropEditor({
   offsetX: number;
   offsetY: number;
   frameWidth: number | null;
+  // Lifted from the parent so saveBranding() can measure the editor's
+  // rendered width and persist it as `bannerFrameWidth`.
+  frameRef: React.RefObject<HTMLDivElement | null>;
   onChange: (patch: Partial<Branding>) => void;
   onReplace: () => void;
   onRemove: () => void;
 }) {
-  const frameRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ dragging: boolean; startX: number; startY: number; baseX: number; baseY: number } | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);

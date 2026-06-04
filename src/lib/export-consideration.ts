@@ -172,6 +172,23 @@ class Cursor {
   }
 }
 
+// Vector-drawn check mark — jsPDF's built-in Helvetica doesn't ship the U+2713
+// glyph and substitutes a thin apostrophe-like character that also throws off
+// the surrounding text's letter-spacing. Two short line segments dodge both
+// problems without bundling a Unicode font.
+function drawTick(doc: jsPDF, x: number, y: number, colorHex: string) {
+  const prevDraw = doc.getDrawColor();
+  const prevWidth = doc.getLineWidth();
+  doc.setDrawColor(colorHex);
+  doc.setLineWidth(0.6);
+  doc.setLineCap("round");
+  doc.setLineJoin("round");
+  doc.line(x,       y + 0.4, x + 1.2, y + 1.6);
+  doc.line(x + 1.2, y + 1.6, x + 3.4, y - 1.0);
+  doc.setDrawColor(prevDraw);
+  doc.setLineWidth(prevWidth);
+}
+
 function drawSectionLabel(doc: jsPDF, label: string, c: Cursor) {
   c.ensure(8);
   doc.setFont("helvetica", "bold");
@@ -307,11 +324,16 @@ function drawRoleComparison(
       doc.setFillColor(SURFACE_ALT);
       doc.rect(MARGIN + colW, c.y, colW, rowH, "F");
     }
-    // Text
+    // Tick + text. The tick is a vector glyph (drawTick) drawn just before
+    // the label so we avoid the U+2713 substitution that jsPDF's Helvetica
+    // turns into a thin apostrophe.
+    const tickGap = 5; // mm of left padding reserved for the tick
+    if (leftOn) drawTick(doc, MARGIN + 3, c.y + rowH / 2, ACCENT);
     doc.setTextColor(leftOn ? ACCENT : TEXT_MUTED);
-    doc.text((leftOn ? "✓ " : "  ") + factor, MARGIN + 3, c.y + rowH / 2, { baseline: "middle" });
+    doc.text(factor, MARGIN + 3 + tickGap, c.y + rowH / 2, { baseline: "middle" });
+    if (rightOn) drawTick(doc, MARGIN + colW + 3, c.y + rowH / 2, GREEN);
     doc.setTextColor(rightOn ? GREEN : TEXT_MUTED);
-    doc.text((rightOn ? "✓ " : "  ") + factor, MARGIN + colW + 3, c.y + rowH / 2, { baseline: "middle" });
+    doc.text(factor, MARGIN + colW + 3 + tickGap, c.y + rowH / 2, { baseline: "middle" });
     // Row separator
     doc.setDrawColor(BORDER_LIGHT);
     doc.line(MARGIN, c.y + rowH, MARGIN + CONTENT_W, c.y + rowH);
