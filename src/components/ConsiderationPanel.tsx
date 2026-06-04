@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExportModal from "./ExportModal";
-import SendLinkModal from "./SendLinkModal";
 import { VALUE_LABELS, COMPARISON_FACTORS, FINANCIAL_ROWS } from "./consideration-constants";
 const FIN_TOTAL_IDX = 7;
 const FIN_WFH_IDX = 6;
@@ -83,7 +82,6 @@ export default function ConsiderationPanel() {
   const [currentCompany, setCurrentCompany] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [exportOpen, setExportOpen] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>("");
@@ -342,35 +340,17 @@ export default function ConsiderationPanel() {
                 </span>
               </div>
 
-              {/* Value chips + share buttons */}
+              {/* Value chips + Export button */}
               <div style={{ marginBottom: 24 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4, gap: 16, flexWrap: "wrap" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
                     What really matters to you in your work?
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      <button className="btn-primary" type="button" onClick={() => setExportOpen(true)}>
-                        Export
-                      </button>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Download a PDF to share</span>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      <button
-                        type="button"
-                        onClick={() => setLinkOpen(true)}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 6,
-                          padding: "6px 14px",
-                          background: "var(--surface)", color: "var(--accent)",
-                          border: "1.5px solid var(--accent)", borderRadius: "var(--radius-sm)",
-                          fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font)",
-                        }}
-                      >
-                        Send link to candidate
-                      </button>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Candidate completes in their own time</span>
-                    </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+                    <button className="btn-primary" type="button" onClick={() => setExportOpen(true)}>
+                      Export
+                    </button>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Download a PDF to share</span>
                   </div>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>
@@ -602,12 +582,6 @@ export default function ConsiderationPanel() {
           newCompany={newCompany}
           currentCompany={currentCompany}
           onClose={() => setExportOpen(false)}
-        />
-      )}
-      {linkOpen && activeCase && (
-        <SendLinkModal
-          caseRow={activeCase}
-          onClose={() => setLinkOpen(false)}
         />
       )}
     </>
