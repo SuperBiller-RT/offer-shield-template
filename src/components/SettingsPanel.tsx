@@ -348,7 +348,11 @@ export default function SettingsPanel() {
           Connect OfferShield to your key, set your brand, and manage your account.
         </div>
 
-        {/* ── API KEYS ── */}
+        {/* ── API KEYS ── (hidden entirely for users who can neither paste a
+            key nor see a balance, i.e. trial accounts using the admin pool.
+            Showing the section with a warning + disabled controls felt
+            unnecessarily heavy to Max — better to just remove the surface). */}
+        {(canManageKeys || canSeeBalance) && (<>
         <div className="s-section-title">API Keys</div>
         <div className="settings-card">
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
@@ -435,6 +439,7 @@ export default function SettingsPanel() {
             </div>
           )}
         </div>
+        </>)}
 
         {/* ── BRANDING ── */}
         <div className="s-section-title" style={{ marginTop: 24 }}>Branding</div>
