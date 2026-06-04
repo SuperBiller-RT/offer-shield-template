@@ -103,7 +103,7 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
 // Returns the cropped data URL plus the final mm dimensions to use on the
 // A4 page (preserves frame aspect ratio; caps height at 50 mm so a tall
 // hero crop doesn't dominate the cover).
-async function renderCroppedBanner(b: BrandingForExport): Promise<
+export async function renderCroppedBanner(b: BrandingForExport): Promise<
   { dataUrl: string; widthMm: number; heightMm: number } | null
 > {
   if (!b.banner) return null;

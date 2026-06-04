@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MODEL_OPTIONS, DEFAULT_MODEL, formatModelOption } from "@/lib/openrouter-models";
+import { renderCroppedBanner } from "@/lib/export-consideration";
 
 interface Me {
   ok: boolean;
@@ -775,40 +776,69 @@ function BannerCropEditor({
 }
 
 function BrandingPreview({ branding }: { branding: Branding }) {
-  const { banner, bannerHeight, bannerScale, bannerOffsetX, bannerOffsetY, companyName, footer } = branding;
+  const { banner, companyName, footer } = branding;
+  // Render the banner through the exact same canvas-crop helper jsPDF uses
+  // when embedding the cover strip. The data URL we display IS the pixels
+  // the PDF gets, so what the recruiter sees here equals what the candidate
+  // sees in the downloaded document.
+  const [bannerDataUrl, setBannerDataUrl] = useState<string | null>(null);
+  const [building, setBuilding] = useState(false);
+  const buildSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!banner) {
+      setBannerDataUrl(null);
+      setBuilding(false);
+      return;
+    }
+    setBuilding(true);
+    const mySeq = ++buildSeqRef.current;
+    const timer = setTimeout(async () => {
+      try {
+        const rendered = await renderCroppedBanner(branding);
+        if (mySeq !== buildSeqRef.current) return;
+        setBannerDataUrl(rendered?.dataUrl ?? null);
+      } catch {
+        if (mySeq !== buildSeqRef.current) return;
+        setBannerDataUrl(null);
+      } finally {
+        if (mySeq === buildSeqRef.current) setBuilding(false);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [branding, banner]);
+
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
       <div
         style={{
           width: "100%",
-          height: bannerHeight + "px",
-          background: banner ? "transparent" : "var(--surface-alt)",
-          position: "relative",
-          overflow: "hidden",
+          minHeight: 60,
+          background: bannerDataUrl ? "transparent" : "var(--surface-alt)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        {banner ? (
+        {bannerDataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={banner}
+            src={bannerDataUrl}
             alt={companyName || "banner"}
             style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              transform: `translate(calc(-50% + ${bannerOffsetX ?? 0}px), calc(-50% + ${bannerOffsetY ?? 0}px)) scale(${bannerScale ?? 1})`,
-              transformOrigin: "center center",
-              maxWidth: "none",
+              display: "block",
+              width: "100%",
+              height: "auto",
+              maxWidth: "100%",
               userSelect: "none",
               pointerEvents: "none",
             }}
           />
         ) : (
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {companyName || "Banner preview — upload an image above"}
+          <span style={{ fontSize: 12, color: "var(--text-muted)", padding: "20px 16px" }}>
+            {building && banner
+              ? "Building preview…"
+              : companyName || "Banner preview, upload an image above."}
           </span>
         )}
       </div>
