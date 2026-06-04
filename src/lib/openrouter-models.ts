@@ -26,5 +26,5 @@ export const MODEL_OPTIONS: ModelOption[] = [
 ];
 
 export function formatModelOption(m: ModelOption): string {
-  return `${m.label} — ${m.provider} (in $${m.in.toFixed(2)} / out $${m.out.toFixed(2)} per 1M)`;
+  return `${m.label}, ${m.provider} (in $${m.in.toFixed(2)} / out $${m.out.toFixed(2)} per 1M)`;
 }

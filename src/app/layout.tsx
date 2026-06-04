@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OfferShield — Protect Your Fees From Counteroffers",
+  title: "OfferShield: Protect Your Fees From Counteroffers",
   description: "Build the case for change with side-by-side role + financial comparison, then share with the candidate.",
 };
 

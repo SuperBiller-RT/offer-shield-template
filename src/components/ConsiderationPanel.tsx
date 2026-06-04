@@ -282,7 +282,7 @@ export default function ConsiderationPanel() {
               Consideration for Change
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-              Side-by-side comparison of how the new role compares. Not a risk score — helps build and test the case for the move.
+              Side-by-side comparison of how the new role compares. Not a risk score. Helps build and test the case for the move.
             </div>
           </div>
 
@@ -386,7 +386,7 @@ export default function ConsiderationPanel() {
                   Your reasons for making this move
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                  In your own words — what made you want to explore a new role? This will be included in your summary.
+                  In your own words. What made you want to explore a new role? This will be included in your summary.
                 </div>
                 <textarea
                   className="field-input"
@@ -495,7 +495,7 @@ export default function ConsiderationPanel() {
                   Recruiter notes
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                  Your recruiter&apos;s observations — context that doesn&apos;t fit neatly into a tick. This will appear in the shared summary.
+                  Your recruiter&apos;s observations. Context that doesn&apos;t fit neatly into a tick. This will appear in the shared summary.
                 </div>
                 <textarea
                   className="field-input"

@@ -414,7 +414,7 @@ export default function SettingsPanel() {
                   </span>
                 </div>
                 <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
-                  Picked for any AI features added later — no LLM calls in this round.
+                  Picked for any AI features added later. No LLM calls in this round.
                 </div>
               </div>
             </>
@@ -626,7 +626,7 @@ function BannerDropzone({
       <div style={{ fontSize: 13, color: "var(--text-primary)" }}>
         <div style={{ fontWeight: 700, marginBottom: 2 }}>Click or drop a banner image here</div>
         <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-          PNG, JPEG, WebP or SVG — automatically downscaled to ~1600px wide.
+          PNG, JPEG, WebP or SVG, automatically downscaled to ~1600px wide.
         </div>
       </div>
     </div>

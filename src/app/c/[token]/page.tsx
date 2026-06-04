@@ -131,7 +131,7 @@ export default async function CandidateSharePage({
         {/* Case header */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "22px 24px", marginBottom: 18, boxShadow: "var(--shadow-sm)" }}>
           <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-.2px", marginBottom: 4 }}>
-            Consideration for Change — {caseRow.name || "you"}
+            Consideration for Change: {caseRow.name || "you"}
           </div>
           <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55 }}>
             This summary captures what you said matters in your work, side-by-side how the new role compares to your current one, and the financial picture. Review it whenever you need to re-anchor your decision.

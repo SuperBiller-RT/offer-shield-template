@@ -66,7 +66,7 @@ export default function SendLinkModal({
       await navigator.clipboard.writeText(result.url);
       alert("Link copied to clipboard.");
     } catch {
-      alert("Could not copy — select and copy manually.");
+      alert("Could not copy. Select and copy manually.");
     }
   }
 
