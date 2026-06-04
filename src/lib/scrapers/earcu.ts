@@ -12,8 +12,8 @@ interface EarcuOpts {
   applyBase?: string;    // optional override for relative apply links
 }
 
-function pickText($node: cheerio.Cheerio<unknown>): string {
-  return $node.text().replace(/\s+/g, " ").trim();
+function trimAll(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
 }
 
 export function makeEarcuScraper(opts: EarcuOpts): ScraperFn {
@@ -32,7 +32,7 @@ export function makeEarcuScraper(opts: EarcuOpts): ScraperFn {
       // Title + apply link
       const a = $(el).find('a[id^="link_job_title"]').first();
       const titleAnchor = a.length ? a : $(el).find("a").first();
-      const title = pickText(titleAnchor).split("\n")[0].trim();
+      const title = trimAll(titleAnchor.text()).split("\n")[0].trim();
       if (!title) return;
       const href = (titleAnchor.attr("href") || "").trim();
       const apply_url = href
@@ -56,9 +56,9 @@ export function makeEarcuScraper(opts: EarcuOpts): ScraperFn {
       // Location — Earcu cards put the location inside .job-component or
       // .job-location spans. Best-effort.
       const location =
-        pickText($(el).find(".job-location, .job-component-location, li.job-location-li").first()) ||
+        trimAll($(el).find(".job-location, .job-component-location, li.job-location-li").first().text()) ||
         // Fallback: anything immediately after the anchor.
-        pickText($(el).find("li").filter((_i, li) => /location|based/i.test($(li).text())).first()) ||
+        trimAll($(el).find("li").filter((_i, li) => /location|based/i.test($(li).text())).first().text()) ||
         null;
 
       out.push({
