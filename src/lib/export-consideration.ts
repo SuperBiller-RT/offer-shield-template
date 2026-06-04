@@ -429,7 +429,9 @@ function drawFooter(doc: jsPDF, branding: BrandingForExport) {
   }
 }
 
-export async function exportConsiderationPdf(args: ExportArgs): Promise<void> {
+// Internal — returns the constructed jsPDF doc so the public exports can
+// decide whether to save it or hand back the Blob for an iframe preview.
+async function buildPdfDoc(args: ExportArgs): Promise<jsPDF> {
   const {
     caseName, recruiterName, newCompany, currentCompany,
     consideration, recruiterNotes, branding,
@@ -553,6 +555,18 @@ export async function exportConsiderationPdf(args: ExportArgs): Promise<void> {
   // ── Footer (every page) ──
   drawFooter(doc, branding);
 
+  return doc;
+}
+
+/** Build the PDF and return it as a Blob. Used by the modal preview iframe. */
+export async function buildConsiderationPdf(args: ExportArgs): Promise<Blob> {
+  const doc = await buildPdfDoc(args);
+  return doc.output("blob");
+}
+
+/** Build the PDF and trigger a download. */
+export async function exportConsiderationPdf(args: ExportArgs): Promise<void> {
+  const doc = await buildPdfDoc(args);
   const blob = doc.output("blob");
-  saveAs(blob, safeFilename(caseName));
+  saveAs(blob, safeFilename(args.caseName));
 }
