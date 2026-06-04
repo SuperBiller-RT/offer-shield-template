@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildConsiderationPdf, exportConsiderationPdf } from "@/lib/export-consideration";
+import type { FinancialRow } from "./consideration-constants";
 
 type Verdict = "left" | "right" | "both";
 
 interface Consideration {
   values: number[];
   comparison: Record<string, Verdict>;
-  financial: Record<string, { l: string; r: string }>;
+  financial: FinancialRow[];
   candidate_reasons: string;
 }
 

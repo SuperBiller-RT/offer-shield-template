@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { VALUE_LABELS, COMPARISON_FACTORS, FINANCIAL_ROWS } from "@/components/consideration-constants";
+import { VALUE_LABELS, COMPARISON_FACTORS, hydrateFinancial } from "@/components/consideration-constants";
 
 type Verdict = "left" | "right" | "both";
 
@@ -15,7 +15,9 @@ interface ShareResponse {
     consideration?: {
       values?: number[];
       comparison?: Record<string, Verdict>;
-      financial?: Record<string, { l: string; r: string }>;
+      // Accept both the new FinancialRow[] and the legacy keyed-object shape;
+      // hydrateFinancial() normalises before render.
+      financial?: unknown;
       candidate_reasons?: string;
     } | null;
   };
@@ -72,7 +74,7 @@ export default async function CandidateSharePage({
   const cons = caseRow.consideration ?? {};
   const values = Array.isArray(cons.values) ? cons.values : [];
   const comparison = (cons.comparison && typeof cons.comparison === "object") ? cons.comparison : {};
-  const financial = (cons.financial && typeof cons.financial === "object") ? cons.financial : {};
+  const financial = hydrateFinancial(cons.financial);
   const reasons = typeof cons.candidate_reasons === "string" ? cons.candidate_reasons : "";
 
   const leftRole = splitRole(caseRow.new_role);
@@ -80,16 +82,13 @@ export default async function CandidateSharePage({
   const leftHeader = leftRole.company || leftRole.title || "New company";
   const rightHeader = rightRole.company || rightRole.title || "Current company";
 
-  // Currency-only roll-up: skip the Pension row (index 4) so a "%" entry
-  // never bumps the total package. Mirrors ConsiderationPanel.
-  const FIN_CURRENCY_INDICES = [0, 1, 2, 3, 5, 6];
+  // Currency-only roll-up. Percent rows (Pension etc.) are shown but excluded
+  // so a "6%" entry doesn't add £6 to the total package.
   let tl = 0, tr = 0;
-  for (const i of FIN_CURRENCY_INDICES) {
-    const row = financial[String(i)];
-    if (row) {
-      tl += parseGbp(row.l ?? "");
-      tr += parseGbp(row.r ?? "");
-    }
+  for (const row of financial) {
+    if (row.unit !== "currency") continue;
+    tl += parseGbp(row.l ?? "");
+    tr += parseGbp(row.r ?? "");
   }
 
   let leftScore = 0, rightScore = 0;
@@ -228,19 +227,18 @@ export default async function CandidateSharePage({
                 <div style={{ padding: "9px 14px", color: "var(--accent)" }}>{leftHeader}</div>
                 <div style={{ padding: "9px 14px", color: "var(--text-muted)" }}>{rightHeader}</div>
               </div>
-              {FINANCIAL_ROWS.slice(0, -1).map((label, i) => {
-                const row = financial[String(i)];
-                if (!row || (!row.l && !row.r)) return null;
-                const isPension = i === 4;
+              {financial.map((row) => {
+                if (!row.l && !row.r) return null;
+                const isPercent = row.unit === "percent";
                 const fmt = (raw: string) => {
                   if (!raw) return "—";
                   const n = parseGbp(raw);
                   if (n <= 0) return raw;
-                  return isPension ? `${n}%` : fmtGbp(n);
+                  return isPercent ? `${n}%` : fmtGbp(n);
                 };
                 return (
-                  <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)", fontSize: 12.5 }}>
-                    <div style={{ padding: "9px 14px", color: "var(--text-secondary)" }}>{label}</div>
+                  <div key={row.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)", fontSize: 12.5 }}>
+                    <div style={{ padding: "9px 14px", color: "var(--text-secondary)" }}>{row.label}</div>
                     <div style={{ padding: "9px 14px" }}>{fmt(row.l)}</div>
                     <div style={{ padding: "9px 14px" }}>{fmt(row.r)}</div>
                   </div>

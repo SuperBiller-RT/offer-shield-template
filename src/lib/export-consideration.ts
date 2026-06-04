@@ -11,7 +11,8 @@ import { saveAs } from "file-saver";
 import {
   VALUE_LABELS,
   COMPARISON_FACTORS,
-  FINANCIAL_ROWS,
+  hydrateFinancial,
+  type FinancialRow,
 } from "@/components/consideration-constants";
 
 type Verdict = "left" | "right" | "both";
@@ -19,7 +20,9 @@ type Verdict = "left" | "right" | "both";
 export interface Consideration {
   values: number[];
   comparison: Record<string, Verdict>;
-  financial: Record<string, { l: string; r: string }>;
+  // Accepts both the canonical FinancialRow[] and the legacy keyed-object
+  // shape; hydrateFinancial() normalises before render.
+  financial: FinancialRow[] | Record<string, { l: string; r: string }>;
   candidate_reasons: string;
 }
 
@@ -61,10 +64,6 @@ const BORDER_LIGHT = "#eef0f3";
 const SURFACE_ALT = "#f9fafb";
 const GREEN = "#059669";
 const GREEN_LIGHT = "#ecfdf5";
-
-const FIN_TOTAL_IDX = 7;
-const FIN_PENSION_IDX = 4;
-const FIN_CURRENCY_INDICES = [0, 1, 2, 3, 5, 6];
 
 function parseGbp(s: string): number {
   if (!s) return 0;
@@ -368,7 +367,7 @@ function drawFinancialTable(
   doc: jsPDF,
   left: string,
   right: string,
-  financial: Record<string, { l: string; r: string }>,
+  financial: FinancialRow[],
   c: Cursor,
 ) {
   const headerH = 7;
@@ -378,19 +377,14 @@ function drawFinancialTable(
   const valueColW = (CONTENT_W - itemColW) / 2;
 
   // Filter to rows that have any value.
-  const populated = FINANCIAL_ROWS.slice(0, FIN_TOTAL_IDX)
-    .map((label, i) => ({ label, i, row: financial[String(i)] }))
-    .filter((x) => x.row && (x.row.l || x.row.r));
-
+  const populated = financial.filter((row) => row.l || row.r);
   if (populated.length === 0) return;
 
   let tl = 0, tr = 0;
-  for (const i of FIN_CURRENCY_INDICES) {
-    const row = financial[String(i)];
-    if (row) {
-      tl += parseGbp(row.l ?? "");
-      tr += parseGbp(row.r ?? "");
-    }
+  for (const row of financial) {
+    if (row.unit !== "currency") continue;
+    tl += parseGbp(row.l ?? "");
+    tr += parseGbp(row.r ?? "");
   }
 
   const blockH = headerH + populated.length * rowH + totalH;
@@ -415,20 +409,20 @@ function drawFinancialTable(
   // Rows
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
-  for (const { label, i, row } of populated) {
+  for (const row of populated) {
     c.ensure(rowH);
-    const isPension = i === FIN_PENSION_IDX;
+    const isPercent = row.unit === "percent";
     const fmt = (raw: string) => {
       if (!raw) return "—";
       const n = parseGbp(raw);
       if (n <= 0) return raw;
-      return isPension ? `${n}%` : fmtGbp(n);
+      return isPercent ? `${n}%` : fmtGbp(n);
     };
     doc.setTextColor(TEXT_SECONDARY);
-    doc.text(label, MARGIN + 3, c.y + rowH / 2, { baseline: "middle" });
+    doc.text(row.label, MARGIN + 3, c.y + rowH / 2, { baseline: "middle" });
     doc.setTextColor(NAVY);
-    doc.text(fmt(row!.l), MARGIN + itemColW + 3, c.y + rowH / 2, { baseline: "middle" });
-    doc.text(fmt(row!.r), MARGIN + itemColW + valueColW + 3, c.y + rowH / 2, { baseline: "middle" });
+    doc.text(fmt(row.l), MARGIN + itemColW + 3, c.y + rowH / 2, { baseline: "middle" });
+    doc.text(fmt(row.r), MARGIN + itemColW + valueColW + 3, c.y + rowH / 2, { baseline: "middle" });
     doc.setDrawColor(BORDER_LIGHT);
     doc.line(MARGIN, c.y + rowH, MARGIN + CONTENT_W, c.y + rowH);
     c.advance(rowH);
@@ -606,18 +600,14 @@ async function buildPdfDoc(args: ExportArgs): Promise<jsPDF> {
   }
 
   // ── Financial ──
-  const hasFinancial = FINANCIAL_ROWS.slice(0, FIN_TOTAL_IDX)
-    .some((_, i) => {
-      const row = consideration.financial[String(i)];
-      return row && (row.l || row.r);
-    });
-  if (hasFinancial) {
+  const financialRows = hydrateFinancial(consideration.financial);
+  if (financialRows.some((row) => row.l || row.r)) {
     drawSectionLabel(doc, "Financial comparison", cursor);
     drawFinancialTable(
       doc,
       newCompany || "New company",
       currentCompany || "Current company",
-      consideration.financial,
+      financialRows,
       cursor,
     );
   }

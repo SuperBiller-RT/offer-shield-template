@@ -2,20 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExportModal from "./ExportModal";
-import { VALUE_LABELS, COMPARISON_FACTORS, FINANCIAL_ROWS } from "./consideration-constants";
-const FIN_TOTAL_IDX = 7;
-const FIN_WFH_IDX = 6;
-const FIN_PENSION_IDX = 4;
-// Currency rows roll up into the Total pill; the % row (Pension) is shown but
-// not summed — typing "6%" mustn't bump the total by £6.
-const FIN_CURRENCY_INDICES = [0, 1, 2, 3, 5, 6];
+import {
+  VALUE_LABELS,
+  COMPARISON_FACTORS,
+  DEFAULT_FINANCIAL_ROWS,
+  hydrateFinancial,
+  newRowId,
+  type FinancialRow,
+} from "./consideration-constants";
 
 type Verdict = "left" | "right" | "both";
 
 interface Consideration {
   values: number[];
   comparison: Record<string, Verdict>;
-  financial: Record<string, { l: string; r: string }>;
+  // FinancialRow[] is the canonical shape. Cases written before this change
+  // carry a legacy keyed-object — hydrateFinancial() upgrades on load.
+  financial: FinancialRow[];
   candidate_reasons: string;
 }
 
@@ -39,7 +42,7 @@ interface CaseRow {
 const EMPTY_CONSIDERATION: Consideration = {
   values: [],
   comparison: {},
-  financial: {},
+  financial: DEFAULT_FINANCIAL_ROWS.map((row) => ({ ...row })),
   candidate_reasons: "",
 };
 
@@ -51,14 +54,15 @@ function parseGbp(s: string): number {
 function fmtGbp(n: number): string {
   return n <= 0 ? "—" : "£" + Math.round(n).toLocaleString("en-GB");
 }
-function calcTotals(fin: Record<string, { l: string; r: string }>) {
+function calcTotals(fin: FinancialRow[]) {
   let tl = 0, tr = 0;
-  for (const i of FIN_CURRENCY_INDICES) {
-    const row = fin[String(i)];
-    if (row) {
-      tl += parseGbp(row.l ?? "");
-      tr += parseGbp(row.r ?? "");
-    }
+  // Currency rows roll up into the Total pill. Percent rows (Pension and any
+  // added custom % rows) are shown but excluded — a "6%" entry shouldn't bump
+  // the £-total by 6.
+  for (const row of fin) {
+    if (row.unit !== "currency") continue;
+    tl += parseGbp(row.l ?? "");
+    tr += parseGbp(row.r ?? "");
   }
   return { tl, tr };
 }
@@ -120,14 +124,15 @@ export default function ConsiderationPanel() {
     const cons = activeCase.consideration ?? EMPTY_CONSIDERATION;
     // Normalise the consideration once so the JSON.stringify in the autosave
     // path produces an identical string to the one we stash here. Without
-    // this, the echo PATCH on the server's round-trip uses our key-order
-    // (values / comparison / financial / candidate_reasons) while the ref was
-    // initialised from the server's jsonb shape (Postgres-ordered) — mismatch
-    // makes every cycle look like a real edit and the autosave loops forever.
+    // this the echo PATCH on the server's round-trip uses our key-order while
+    // the ref was initialised from the server's jsonb shape (Postgres-ordered)
+    // and every cycle looks like a real edit (the autosave loops forever).
+    // hydrateFinancial also upgrades legacy keyed-object shapes into the new
+    // FinancialRow[] in-place.
     const normalised: Consideration = {
       values: cons.values ?? [],
       comparison: cons.comparison ?? {},
-      financial: cons.financial ?? {},
+      financial: hydrateFinancial(cons.financial),
       candidate_reasons: cons.candidate_reasons ?? "",
     };
     setDraft(normalised);
@@ -216,14 +221,50 @@ export default function ConsiderationPanel() {
     });
   }
 
-  function updateFin(idx: number, side: "l" | "r", value: string) {
-    setDraft((d) => {
-      const cur = d.financial[String(idx)] ?? { l: "", r: "" };
-      return {
-        ...d,
-        financial: { ...d.financial, [String(idx)]: { ...cur, [side]: value } },
-      };
-    });
+  function updateFinValue(rowId: string, side: "l" | "r", value: string) {
+    setDraft((d) => ({
+      ...d,
+      financial: d.financial.map((row) =>
+        row.id === rowId ? { ...row, [side]: value } : row,
+      ),
+    }));
+  }
+
+  function renameFinRow(rowId: string, label: string) {
+    setDraft((d) => ({
+      ...d,
+      financial: d.financial.map((row) =>
+        row.id === rowId ? { ...row, label } : row,
+      ),
+    }));
+  }
+
+  function removeFinRow(rowId: string) {
+    setDraft((d) => ({
+      ...d,
+      financial: d.financial.filter((row) => row.id !== rowId || !row.removable),
+    }));
+  }
+
+  function cycleFinUnit(rowId: string) {
+    setDraft((d) => ({
+      ...d,
+      financial: d.financial.map((row) =>
+        row.id === rowId
+          ? { ...row, unit: row.unit === "currency" ? "percent" : "currency" }
+          : row,
+      ),
+    }));
+  }
+
+  function addFinRow() {
+    setDraft((d) => ({
+      ...d,
+      financial: [
+        ...d.financial,
+        { id: newRowId(), label: "Custom row", l: "", r: "", unit: "currency", removable: true },
+      ],
+    }));
   }
 
   async function createCase(e: React.FormEvent) {
@@ -510,7 +551,7 @@ export default function ConsiderationPanel() {
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Financial Comparison</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  Full package comparison to make the financial picture clear.
+                  Full package comparison to make the financial picture clear. Click a row label to rename it, or the £/% pill to switch the unit.
                 </div>
                 <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "var(--surface-alt)", borderBottom: "1px solid var(--border)" }}>
@@ -518,52 +559,39 @@ export default function ConsiderationPanel() {
                     <div style={{ padding: "9px 14px", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--accent)" }}>{leftHeader}</div>
                     <div style={{ padding: "9px 14px", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--text-muted)" }}>{rightHeader}</div>
                   </div>
-                  {FINANCIAL_ROWS.map((label, i) => {
-                    if (i === FIN_TOTAL_IDX) {
-                      const lHigh = tl > tr && tl > 0;
-                      const rHigh = tr > tl && tr > 0;
-                      return (
-                        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "var(--surface-alt)", borderTop: "2px solid var(--border)" }}>
-                          <div style={{ padding: "10px 14px", fontSize: 12.5, fontWeight: 700, color: "var(--text-secondary)" }}>{label}</div>
-                          <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: lHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tl)}</div>
-                          <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: rHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tr)}</div>
-                        </div>
-                      );
-                    }
-                    const row = draft.financial[String(i)] ?? { l: "", r: "" };
-                    const isPension = i === FIN_PENSION_IDX;
+                  {draft.financial.map((row) => (
+                    <FinancialEditableRow
+                      key={row.id}
+                      row={row}
+                      onUpdateValue={(side, v) => updateFinValue(row.id, side, v)}
+                      onRename={(label) => renameFinRow(row.id, label)}
+                      onCycleUnit={() => cycleFinUnit(row.id)}
+                      onRemove={() => removeFinRow(row.id)}
+                    />
+                  ))}
+                  {/* Total row */}
+                  {(() => {
+                    const lHigh = tl > tr && tl > 0;
+                    const rHigh = tr > tl && tr > 0;
                     return (
-                      <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)" }}>
-                        <div style={{ padding: "9px 14px", fontSize: 12.5, fontWeight: 500, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
-                          {label}
-                          {i === FIN_WFH_IDX && (
-                            <span title="Includes remote working allowance plus estimated yearly savings." style={{ fontSize: 10, color: "var(--accent)", cursor: "help" }}>
-                              ⓘ
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ padding: "6px 10px" }}>
-                          <FinAdornedInput
-                            unit={isPension ? "%" : "£"}
-                            placement={isPension ? "suffix" : "prefix"}
-                            value={row.l}
-                            onChange={(v) => updateFin(i, "l", v)}
-                          />
-                        </div>
-                        <div style={{ padding: "6px 10px" }}>
-                          <FinAdornedInput
-                            unit={isPension ? "%" : "£"}
-                            placement={isPension ? "suffix" : "prefix"}
-                            value={row.r}
-                            onChange={(v) => updateFin(i, "r", v)}
-                          />
-                        </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "var(--surface-alt)", borderTop: "2px solid var(--border)" }}>
+                        <div style={{ padding: "10px 14px", fontSize: 12.5, fontWeight: 700, color: "var(--text-secondary)" }}>Total Package (est.)</div>
+                        <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: lHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tl)}</div>
+                        <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: rHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tr)}</div>
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
+                <button
+                  type="button"
+                  className="btn-sec"
+                  onClick={addFinRow}
+                  style={{ marginTop: 10, fontSize: 12 }}
+                >
+                  + Add row
+                </button>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
-                  WFH allowance / cost saving includes remote working allowance plus estimated yearly savings from reduced travel and office costs.
+                  Total sums currency (£) rows only. Percent (%) rows are shown but excluded from the total.
                 </div>
               </div>
 
@@ -738,6 +766,128 @@ function FinAdornedInput({
           {unit}
         </span>
       )}
+    </div>
+  );
+}
+
+function FinancialEditableRow({
+  row,
+  onUpdateValue,
+  onRename,
+  onCycleUnit,
+  onRemove,
+}: {
+  row: FinancialRow;
+  onUpdateValue: (side: "l" | "r", value: string) => void;
+  onRename: (label: string) => void;
+  onCycleUnit: () => void;
+  onRemove: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [hover, setHover] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(row.label);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Keep the local draft in sync if the row label changes from elsewhere.
+  useEffect(() => { if (!editing) setDraftLabel(row.label); }, [row.label, editing]);
+
+  function commit() {
+    const next = draftLabel.trim();
+    setEditing(false);
+    if (next && next !== row.label) onRename(next);
+    else setDraftLabel(row.label);
+  }
+
+  return (
+    <div
+      style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div style={{ padding: "6px 14px", fontSize: 12.5, fontWeight: 500, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 8, minHeight: 34 }}>
+        {editing ? (
+          <input
+            ref={inputRef}
+            autoFocus
+            value={draftLabel}
+            onChange={(e) => setDraftLabel(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commit(); }
+              if (e.key === "Escape") { setDraftLabel(row.label); setEditing(false); }
+            }}
+            style={{
+              flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 12.5, fontFamily: "var(--font)",
+              border: "1.5px solid var(--accent-mid)", borderRadius: "var(--radius-sm)",
+              background: "var(--surface)", color: "var(--text-primary)", outline: "none",
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            title="Rename row"
+            style={{
+              flex: 1, minWidth: 0, textAlign: "left", padding: "2px 0",
+              background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font)",
+              fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 500,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}
+          >
+            {row.label}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCycleUnit}
+          title="Switch between £ and %"
+          style={{
+            padding: "1px 7px", borderRadius: 10,
+            background: row.unit === "percent" ? "var(--amber-light)" : "var(--accent-light)",
+            color: row.unit === "percent" ? "var(--amber)" : "var(--accent)",
+            border: "1px solid " + (row.unit === "percent" ? "#fde68a" : "#bfdbfe"),
+            fontSize: 10.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)",
+            flexShrink: 0,
+          }}
+        >
+          {row.unit === "percent" ? "%" : "£"}
+        </button>
+        {row.removable && (
+          <button
+            type="button"
+            onClick={onRemove}
+            title="Remove row"
+            aria-label="Remove row"
+            style={{
+              width: 18, height: 18, borderRadius: 9,
+              background: hover ? "var(--red-light)" : "transparent",
+              color: hover ? "var(--red)" : "var(--text-muted)",
+              border: "none", cursor: "pointer", fontSize: 12, lineHeight: 1,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: "var(--font)", flexShrink: 0,
+              transition: "background .12s, color .12s",
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <div style={{ padding: "6px 10px" }}>
+        <FinAdornedInput
+          unit={row.unit === "percent" ? "%" : "£"}
+          placement={row.unit === "percent" ? "suffix" : "prefix"}
+          value={row.l}
+          onChange={(v) => onUpdateValue("l", v)}
+        />
+      </div>
+      <div style={{ padding: "6px 10px" }}>
+        <FinAdornedInput
+          unit={row.unit === "percent" ? "%" : "£"}
+          placement={row.unit === "percent" ? "suffix" : "prefix"}
+          value={row.r}
+          onChange={(v) => onUpdateValue("r", v)}
+        />
+      </div>
     </div>
   );
 }
