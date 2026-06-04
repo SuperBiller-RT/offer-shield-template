@@ -8,7 +8,11 @@ import {
   DEFAULT_FINANCIAL_ROWS,
   hydrateFinancial,
   newRowId,
+  CURRENCIES,
+  DEFAULT_CURRENCY,
+  currencySymbol,
   type FinancialRow,
+  type CurrencyCode,
 } from "./consideration-constants";
 
 type Verdict = "left" | "right" | "both";
@@ -20,6 +24,9 @@ interface Consideration {
   // carry a legacy keyed-object — hydrateFinancial() upgrades on load.
   financial: FinancialRow[];
   candidate_reasons: string;
+  // Per-case currency. Defaults to GBP for legacy cases. Drives the symbol
+  // shown next to currency-unit rows + the total pill.
+  currency?: CurrencyCode;
 }
 
 interface CaseRow {
@@ -44,15 +51,16 @@ const EMPTY_CONSIDERATION: Consideration = {
   comparison: {},
   financial: DEFAULT_FINANCIAL_ROWS.map((row) => ({ ...row })),
   candidate_reasons: "",
+  currency: DEFAULT_CURRENCY,
 };
 
-function parseGbp(s: string): number {
+function parseAmount(s: string): number {
   if (!s) return 0;
   const n = parseFloat(s.replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
-function fmtGbp(n: number): string {
-  return n <= 0 ? "—" : "£" + Math.round(n).toLocaleString("en-GB");
+function fmtCurrency(n: number, symbol: string): string {
+  return n <= 0 ? "—" : symbol + Math.round(n).toLocaleString("en-GB");
 }
 function calcTotals(fin: FinancialRow[]) {
   let tl = 0, tr = 0;
@@ -61,8 +69,8 @@ function calcTotals(fin: FinancialRow[]) {
   // the £-total by 6.
   for (const row of fin) {
     if (row.unit !== "currency") continue;
-    tl += parseGbp(row.l ?? "");
-    tr += parseGbp(row.r ?? "");
+    tl += parseAmount(row.l ?? "");
+    tr += parseAmount(row.r ?? "");
   }
   return { tl, tr };
 }
@@ -134,6 +142,9 @@ export default function ConsiderationPanel() {
       comparison: cons.comparison ?? {},
       financial: hydrateFinancial(cons.financial),
       candidate_reasons: cons.candidate_reasons ?? "",
+      currency: (cons.currency && CURRENCIES.some((c) => c.code === cons.currency))
+        ? (cons.currency as CurrencyCode)
+        : DEFAULT_CURRENCY,
     };
     setDraft(normalised);
     setRecruiterNotes(activeCase.notes ?? "");
@@ -302,6 +313,8 @@ export default function ConsiderationPanel() {
   const rightHeader = rightSplit.company || rightSplit.title || "Current company";
 
   const { tl, tr } = calcTotals(draft.financial);
+  const caseCurrency: CurrencyCode = draft.currency ?? DEFAULT_CURRENCY;
+  const curSymbol = currencySymbol(caseCurrency);
   let leftScore = 0, rightScore = 0;
   for (let i = 0; i < COMPARISON_FACTORS.length; i++) {
     const v = draft.comparison[String(i)];
@@ -549,11 +562,28 @@ export default function ConsiderationPanel() {
 
               {/* Financial comparison */}
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Financial Comparison</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  Full package comparison to make the financial picture clear. Click a row label to rename it, or the £/% pill to switch the unit.
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Financial Comparison</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      Full package comparison. Click a row label to rename it, or the unit pill to switch between currency and percent.
+                    </div>
+                  </div>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+                    Currency
+                    <select
+                      className="field-input"
+                      value={caseCurrency}
+                      onChange={(e) => setDraft((d) => ({ ...d, currency: e.target.value as CurrencyCode }))}
+                      style={{ padding: "5px 8px", fontSize: 12 }}
+                    >
+                      {CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>{c.symbol} {c.label}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", boxShadow: "var(--shadow-sm)", marginTop: 12 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "var(--surface-alt)", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ padding: "9px 14px", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--text-muted)" }}>Item</div>
                     <div style={{ padding: "9px 14px", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--accent)" }}>{leftHeader}</div>
@@ -563,12 +593,43 @@ export default function ConsiderationPanel() {
                     <FinancialEditableRow
                       key={row.id}
                       row={row}
+                      currencySymbol={curSymbol}
                       onUpdateValue={(side, v) => updateFinValue(row.id, side, v)}
                       onRename={(label) => renameFinRow(row.id, label)}
                       onCycleUnit={() => cycleFinUnit(row.id)}
                       onRemove={() => removeFinRow(row.id)}
                     />
                   ))}
+                  {/* Inline add-row affordance — sits inside the table between the
+                      data rows and the Total summary, matching Notion/Airtable. */}
+                  <button
+                    type="button"
+                    onClick={addFinRow}
+                    style={{
+                      width: "100%",
+                      padding: "8px 14px",
+                      background: "transparent",
+                      border: "none",
+                      borderTop: "1px dashed var(--border)",
+                      borderBottom: "1px solid var(--border-light)",
+                      fontFamily: "var(--font)",
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      transition: "background .12s, color .12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--accent-light)";
+                      e.currentTarget.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "var(--text-muted)";
+                    }}
+                  >
+                    + Add row
+                  </button>
                   {/* Total row */}
                   {(() => {
                     const lHigh = tl > tr && tl > 0;
@@ -576,22 +637,14 @@ export default function ConsiderationPanel() {
                     return (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "var(--surface-alt)", borderTop: "2px solid var(--border)" }}>
                         <div style={{ padding: "10px 14px", fontSize: 12.5, fontWeight: 700, color: "var(--text-secondary)" }}>Total Package (est.)</div>
-                        <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: lHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tl)}</div>
-                        <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: rHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tr)}</div>
+                        <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: lHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtCurrency(tl, curSymbol)}</div>
+                        <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 800, color: rHigh ? "var(--green)" : "var(--text-primary)" }}>{fmtCurrency(tr, curSymbol)}</div>
                       </div>
                     );
                   })()}
                 </div>
-                <button
-                  type="button"
-                  className="btn-sec"
-                  onClick={addFinRow}
-                  style={{ marginTop: 10, fontSize: 12 }}
-                >
-                  + Add row
-                </button>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
-                  Total sums currency (£) rows only. Percent (%) rows are shown but excluded from the total.
+                  Total sums currency rows only. Percent rows are shown but excluded from the total.
                 </div>
               </div>
 
@@ -601,8 +654,8 @@ export default function ConsiderationPanel() {
                   Estimated total annual package
                 </div>
                 <div style={{ display: "flex", gap: 12 }}>
-                  <TotalPill label={leftHeader} value={tl} highlight={tl > tr && tl > 0} />
-                  <TotalPill label={rightHeader} value={tr} highlight={tr > tl && tr > 0} />
+                  <TotalPill label={leftHeader} value={tl} symbol={curSymbol} highlight={tl > tr && tl > 0} />
+                  <TotalPill label={rightHeader} value={tr} symbol={curSymbol} highlight={tr > tl && tr > 0} />
                 </div>
               </div>
             </>
@@ -623,7 +676,7 @@ export default function ConsiderationPanel() {
   );
 }
 
-function TotalPill({ label, value, highlight }: { label: string; value: number; highlight: boolean }) {
+function TotalPill({ label, value, symbol, highlight }: { label: string; value: number; symbol: string; highlight: boolean }) {
   return (
     <div
       style={{
@@ -640,7 +693,7 @@ function TotalPill({ label, value, highlight }: { label: string; value: number; 
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: highlight ? "var(--green)" : "var(--text-primary)" }}>
-        {value > 0 ? fmtGbp(value) : "—"}
+        {value > 0 ? fmtCurrency(value, symbol) : "—"}
       </div>
     </div>
   );
@@ -772,12 +825,14 @@ function FinAdornedInput({
 
 function FinancialEditableRow({
   row,
+  currencySymbol,
   onUpdateValue,
   onRename,
   onCycleUnit,
   onRemove,
 }: {
   row: FinancialRow;
+  currencySymbol: string;
   onUpdateValue: (side: "l" | "r", value: string) => void;
   onRename: (label: string) => void;
   onCycleUnit: () => void;
@@ -840,7 +895,7 @@ function FinancialEditableRow({
         <button
           type="button"
           onClick={onCycleUnit}
-          title="Switch between £ and %"
+          title={`Switch between ${currencySymbol} and %`}
           style={{
             padding: "1px 7px", borderRadius: 10,
             background: row.unit === "percent" ? "var(--amber-light)" : "var(--accent-light)",
@@ -850,7 +905,7 @@ function FinancialEditableRow({
             flexShrink: 0,
           }}
         >
-          {row.unit === "percent" ? "%" : "£"}
+          {row.unit === "percent" ? "%" : currencySymbol}
         </button>
         {row.removable && (
           <button
@@ -874,7 +929,7 @@ function FinancialEditableRow({
       </div>
       <div style={{ padding: "6px 10px" }}>
         <FinAdornedInput
-          unit={row.unit === "percent" ? "%" : "£"}
+          unit={row.unit === "percent" ? "%" : currencySymbol}
           placement={row.unit === "percent" ? "suffix" : "prefix"}
           value={row.l}
           onChange={(v) => onUpdateValue("l", v)}
@@ -882,7 +937,7 @@ function FinancialEditableRow({
       </div>
       <div style={{ padding: "6px 10px" }}>
         <FinAdornedInput
-          unit={row.unit === "percent" ? "%" : "£"}
+          unit={row.unit === "percent" ? "%" : currencySymbol}
           placement={row.unit === "percent" ? "suffix" : "prefix"}
           value={row.r}
           onChange={(v) => onUpdateValue("r", v)}

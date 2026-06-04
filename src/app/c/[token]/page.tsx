@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { VALUE_LABELS, COMPARISON_FACTORS, hydrateFinancial } from "@/components/consideration-constants";
+import { VALUE_LABELS, COMPARISON_FACTORS, hydrateFinancial, currencySymbol, DEFAULT_CURRENCY } from "@/components/consideration-constants";
 
 type Verdict = "left" | "right" | "both";
 
@@ -19,6 +19,7 @@ interface ShareResponse {
       // hydrateFinancial() normalises before render.
       financial?: unknown;
       candidate_reasons?: string;
+      currency?: string;
     } | null;
   };
   sender: {
@@ -43,13 +44,13 @@ async function fetchShare(token: string): Promise<ShareResponse | null> {
   }
 }
 
-function parseGbp(s: string): number {
+function parseAmount(s: string): number {
   if (!s) return 0;
   const n = parseFloat(s.replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
-function fmtGbp(n: number): string {
-  return n <= 0 ? "—" : "£" + Math.round(n).toLocaleString("en-GB");
+function fmtCurrency(n: number, symbol: string): string {
+  return n <= 0 ? "—" : symbol + Math.round(n).toLocaleString("en-GB");
 }
 
 function splitRole(s: string | null) {
@@ -76,6 +77,7 @@ export default async function CandidateSharePage({
   const comparison = (cons.comparison && typeof cons.comparison === "object") ? cons.comparison : {};
   const financial = hydrateFinancial(cons.financial);
   const reasons = typeof cons.candidate_reasons === "string" ? cons.candidate_reasons : "";
+  const symbol = currencySymbol(cons.currency ?? DEFAULT_CURRENCY);
 
   const leftRole = splitRole(caseRow.new_role);
   const rightRole = splitRole(caseRow.current_role);
@@ -87,8 +89,8 @@ export default async function CandidateSharePage({
   let tl = 0, tr = 0;
   for (const row of financial) {
     if (row.unit !== "currency") continue;
-    tl += parseGbp(row.l ?? "");
-    tr += parseGbp(row.r ?? "");
+    tl += parseAmount(row.l ?? "");
+    tr += parseAmount(row.r ?? "");
   }
 
   let leftScore = 0, rightScore = 0;
@@ -232,9 +234,9 @@ export default async function CandidateSharePage({
                 const isPercent = row.unit === "percent";
                 const fmt = (raw: string) => {
                   if (!raw) return "—";
-                  const n = parseGbp(raw);
+                  const n = parseAmount(raw);
                   if (n <= 0) return raw;
-                  return isPercent ? `${n}%` : fmtGbp(n);
+                  return isPercent ? `${n}%` : fmtCurrency(n, symbol);
                 };
                 return (
                   <div key={row.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border-light)", fontSize: 12.5 }}>
@@ -246,8 +248,8 @@ export default async function CandidateSharePage({
               })}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "var(--surface-alt)", borderTop: "2px solid var(--border)", fontSize: 13 }}>
                 <div style={{ padding: "10px 14px", fontWeight: 700, color: "var(--text-secondary)" }}>Total Package (est.)</div>
-                <div style={{ padding: "10px 14px", fontWeight: 800, color: tl > tr && tl > 0 ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tl)}</div>
-                <div style={{ padding: "10px 14px", fontWeight: 800, color: tr > tl && tr > 0 ? "var(--green)" : "var(--text-primary)" }}>{fmtGbp(tr)}</div>
+                <div style={{ padding: "10px 14px", fontWeight: 800, color: tl > tr && tl > 0 ? "var(--green)" : "var(--text-primary)" }}>{fmtCurrency(tl, symbol)}</div>
+                <div style={{ padding: "10px 14px", fontWeight: 800, color: tr > tl && tr > 0 ? "var(--green)" : "var(--text-primary)" }}>{fmtCurrency(tr, symbol)}</div>
               </div>
             </div>
           </Section>

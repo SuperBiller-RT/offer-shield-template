@@ -11,6 +11,7 @@ interface Consideration {
   comparison: Record<string, Verdict>;
   financial: FinancialRow[];
   candidate_reasons: string;
+  currency?: string;
 }
 
 interface CaseRow {

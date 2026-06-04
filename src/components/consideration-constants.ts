@@ -13,6 +13,23 @@ export const COMPARISON_FACTORS = [
   "Manager Quality", "Stability / Security",
 ];
 
+export type CurrencyCode = "GBP" | "USD" | "EUR" | "AUD" | "CAD";
+
+export const CURRENCIES: { code: CurrencyCode; symbol: string; label: string }[] = [
+  { code: "GBP", symbol: "£",  label: "GBP" },
+  { code: "USD", symbol: "$",  label: "USD" },
+  { code: "EUR", symbol: "€",  label: "EUR" },
+  { code: "AUD", symbol: "A$", label: "AUD" },
+  { code: "CAD", symbol: "C$", label: "CAD" },
+];
+
+export const DEFAULT_CURRENCY: CurrencyCode = "GBP";
+
+export function currencySymbol(code: CurrencyCode | string | null | undefined): string {
+  const c = CURRENCIES.find((x) => x.code === code);
+  return c ? c.symbol : "£";
+}
+
 export type FinancialUnit = "currency" | "percent";
 
 export interface FinancialRow {

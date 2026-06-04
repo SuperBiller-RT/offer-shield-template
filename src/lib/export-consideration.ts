@@ -12,7 +12,10 @@ import {
   VALUE_LABELS,
   COMPARISON_FACTORS,
   hydrateFinancial,
+  currencySymbol,
+  DEFAULT_CURRENCY,
   type FinancialRow,
+  type CurrencyCode,
 } from "@/components/consideration-constants";
 
 type Verdict = "left" | "right" | "both";
@@ -24,6 +27,7 @@ export interface Consideration {
   // shape; hydrateFinancial() normalises before render.
   financial: FinancialRow[] | Record<string, { l: string; r: string }>;
   candidate_reasons: string;
+  currency?: CurrencyCode | string;
 }
 
 export interface BrandingForExport {
@@ -65,13 +69,13 @@ const SURFACE_ALT = "#f9fafb";
 const GREEN = "#059669";
 const GREEN_LIGHT = "#ecfdf5";
 
-function parseGbp(s: string): number {
+function parseAmount(s: string): number {
   if (!s) return 0;
   const n = parseFloat(s.replace(/[^0-9.]/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
-function fmtGbp(n: number): string {
-  return n <= 0 ? "—" : "£" + Math.round(n).toLocaleString("en-GB");
+function fmtCurrency(n: number, symbol: string): string {
+  return n <= 0 ? "—" : symbol + Math.round(n).toLocaleString("en-GB");
 }
 
 function safeFilename(name: string): string {
@@ -368,6 +372,7 @@ function drawFinancialTable(
   left: string,
   right: string,
   financial: FinancialRow[],
+  symbol: string,
   c: Cursor,
 ) {
   const headerH = 7;
@@ -383,8 +388,8 @@ function drawFinancialTable(
   let tl = 0, tr = 0;
   for (const row of financial) {
     if (row.unit !== "currency") continue;
-    tl += parseGbp(row.l ?? "");
-    tr += parseGbp(row.r ?? "");
+    tl += parseAmount(row.l ?? "");
+    tr += parseAmount(row.r ?? "");
   }
 
   const blockH = headerH + populated.length * rowH + totalH;
@@ -414,9 +419,9 @@ function drawFinancialTable(
     const isPercent = row.unit === "percent";
     const fmt = (raw: string) => {
       if (!raw) return "—";
-      const n = parseGbp(raw);
+      const n = parseAmount(raw);
       if (n <= 0) return raw;
-      return isPercent ? `${n}%` : fmtGbp(n);
+      return isPercent ? `${n}%` : fmtCurrency(n, symbol);
     };
     doc.setTextColor(TEXT_SECONDARY);
     doc.text(row.label, MARGIN + 3, c.y + rowH / 2, { baseline: "middle" });
@@ -440,9 +445,9 @@ function drawFinancialTable(
   doc.setTextColor(TEXT_SECONDARY);
   doc.text("Total Package (est.)", MARGIN + 3, c.y + totalH / 2, { baseline: "middle" });
   doc.setTextColor(tl > tr && tl > 0 ? GREEN : NAVY);
-  doc.text(fmtGbp(tl), MARGIN + itemColW + 3, c.y + totalH / 2, { baseline: "middle" });
+  doc.text(fmtCurrency(tl, symbol), MARGIN + itemColW + 3, c.y + totalH / 2, { baseline: "middle" });
   doc.setTextColor(tr > tl && tr > 0 ? GREEN : NAVY);
-  doc.text(fmtGbp(tr), MARGIN + itemColW + valueColW + 3, c.y + totalH / 2, { baseline: "middle" });
+  doc.text(fmtCurrency(tr, symbol), MARGIN + itemColW + valueColW + 3, c.y + totalH / 2, { baseline: "middle" });
   doc.setDrawColor(BORDER);
   doc.setLineWidth(0.2);
   doc.rect(MARGIN, c.y, CONTENT_W, totalH, "S");
@@ -474,7 +479,7 @@ function drawFinancialTable(
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
       doc.setTextColor(highlight ? GREEN : NAVY);
-      doc.text(value > 0 ? fmtGbp(value) : "—", x + pillW / 2, c.y + 11.5, { baseline: "middle", align: "center" });
+      doc.text(value > 0 ? fmtCurrency(value, symbol) : "—", x + pillW / 2, c.y + 11.5, { baseline: "middle", align: "center" });
     };
     drawPill(MARGIN, left, tl, tl > tr && tl > 0);
     drawPill(MARGIN + pillW + gap, right, tr, tr > tl && tr > 0);
@@ -601,6 +606,7 @@ async function buildPdfDoc(args: ExportArgs): Promise<jsPDF> {
 
   // ── Financial ──
   const financialRows = hydrateFinancial(consideration.financial);
+  const symbol = currencySymbol(consideration.currency ?? DEFAULT_CURRENCY);
   if (financialRows.some((row) => row.l || row.r)) {
     drawSectionLabel(doc, "Financial comparison", cursor);
     drawFinancialTable(
@@ -608,6 +614,7 @@ async function buildPdfDoc(args: ExportArgs): Promise<jsPDF> {
       newCompany || "New company",
       currentCompany || "Current company",
       financialRows,
+      symbol,
       cursor,
     );
   }
