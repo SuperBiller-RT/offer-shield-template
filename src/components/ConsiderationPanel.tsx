@@ -118,17 +118,24 @@ export default function ConsiderationPanel() {
       return;
     }
     const cons = activeCase.consideration ?? EMPTY_CONSIDERATION;
-    setDraft({
+    // Normalise the consideration once so the JSON.stringify in the autosave
+    // path produces an identical string to the one we stash here. Without
+    // this, the echo PATCH on the server's round-trip uses our key-order
+    // (values / comparison / financial / candidate_reasons) while the ref was
+    // initialised from the server's jsonb shape (Postgres-ordered) — mismatch
+    // makes every cycle look like a real edit and the autosave loops forever.
+    const normalised: Consideration = {
       values: cons.values ?? [],
       comparison: cons.comparison ?? {},
       financial: cons.financial ?? {},
       candidate_reasons: cons.candidate_reasons ?? "",
-    });
+    };
+    setDraft(normalised);
     setRecruiterNotes(activeCase.notes ?? "");
     setNewCompany(activeCase.new_role ?? "");
     setCurrentCompany(activeCase.current_role ?? "");
     lastSavedRef.current = JSON.stringify({
-      consideration: cons,
+      consideration: normalised,
       notes: activeCase.notes ?? "",
       new_role: activeCase.new_role ?? "",
       current_role: activeCase.current_role ?? "",
