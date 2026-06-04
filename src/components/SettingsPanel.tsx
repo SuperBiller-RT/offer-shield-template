@@ -153,8 +153,10 @@ export default function SettingsPanel() {
           model: typeof aiData.model === "string" ? aiData.model : "",
         });
       }
-      if (brandData?.ok && brandData.branding) {
-        const b = brandData.branding as Partial<Branding>;
+      if (brandData?.ok) {
+        // Branding fields are spread directly into the response — accept both
+        // the flat shape and the older `{ branding: {...} }` for safety.
+        const b = (brandData.branding ?? brandData) as Partial<Branding>;
         const merged: Branding = { ...DEFAULT_BRAND, ...b };
         setBrand(merged);
         setRawBanner(merged.banner || "");

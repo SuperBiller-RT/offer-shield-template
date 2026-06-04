@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import SendSummaryModal from "./SendSummaryModal";
+import ExportModal from "./ExportModal";
 import SendLinkModal from "./SendLinkModal";
 import { VALUE_LABELS, COMPARISON_FACTORS, FINANCIAL_ROWS } from "./consideration-constants";
 const FIN_TOTAL_IDX = 7;
@@ -82,7 +82,7 @@ export default function ConsiderationPanel() {
   const [newCompany, setNewCompany] = useState("");
   const [currentCompany, setCurrentCompany] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [shareOpen, setShareOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -350,10 +350,10 @@ export default function ConsiderationPanel() {
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      <button className="btn-primary" type="button" onClick={() => setShareOpen(true)}>
-                        Send summary
+                      <button className="btn-primary" type="button" onClick={() => setExportOpen(true)}>
+                        Export
                       </button>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Done together on a call</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Download a PDF to share</span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                       <button
@@ -594,12 +594,14 @@ export default function ConsiderationPanel() {
           )}
         </div>
       </div>
-      {shareOpen && activeCase && (
-        <SendSummaryModal
+      {exportOpen && activeCase && (
+        <ExportModal
           caseRow={activeCase}
           consideration={draft}
           recruiterNotes={recruiterNotes}
-          onClose={() => setShareOpen(false)}
+          newCompany={newCompany}
+          currentCompany={currentCompany}
+          onClose={() => setExportOpen(false)}
         />
       )}
       {linkOpen && activeCase && (

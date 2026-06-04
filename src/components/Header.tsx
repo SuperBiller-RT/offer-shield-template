@@ -31,8 +31,12 @@ export default function Header({
     fetch("/api/auth/branding", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (cancelled || !d?.ok || !d.branding) return;
-        setBranding(d.branding as Branding);
+        if (cancelled || !d?.ok) return;
+        // The API spreads the branding fields directly into the response
+        // (`{ ok, banner, bannerHeight, ... }`) — handle both flat and the
+        // older `{ ok, branding: {...} }` shape for safety.
+        const b = d.branding ?? d;
+        setBranding(b as Branding);
       })
       .catch(() => {});
     return () => { cancelled = true; };
